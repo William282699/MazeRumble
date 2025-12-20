@@ -35,8 +35,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - UI
     private var scoreBoardLabel: SKLabelNode?
+    private var scoreBoardShadow: SKLabelNode?
+    private var scoreBoardBackground: SKShapeNode?
+    private var playerProgressTrack: SKShapeNode?
+    private var botProgressTrack: SKShapeNode?
+    private var playerProgressBar: SKSpriteNode?
+    private var botProgressBar: SKSpriteNode?
     private var timerLabel: SKLabelNode?
     private var hintLabel: SKLabelNode?
+    private var matchEndOverlay: SKNode?
 
     private var roundTimeRemaining: TimeInterval = 60
     private var lastUpdateTime: TimeInterval = 0
@@ -58,6 +65,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private let joystickKnobRadius: CGFloat = 35
     private let joystickTouchRadius: CGFloat = 260          // 左下角允许触摸区域半径（更宽松）
     private let joystickDeadZone: CGFloat = 10              // 摇杆死区
+
+    private let scoreBackgroundSize = CGSize(width: 320, height: 64)
+    private let progressBarWidth: CGFloat = 150
+    private let progressBarHeight: CGFloat = 12
 
     private let playerMaxSpeed: CGFloat = 230               // 你最大速度
     private let botMaxSpeed: CGFloat = 200                  // Bot 最大速度
@@ -312,22 +323,76 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - UI
     private func createUI() {
+        let bg = SKShapeNode(rectOf: scoreBackgroundSize, cornerRadius: 18)
+        bg.fillColor = UIColor(red: 0.05, green: 0.08, blue: 0.12, alpha: 0.78)
+        bg.strokeColor = UIColor.white.withAlphaComponent(0.85)
+        bg.lineWidth = 2.5
+        bg.zPosition = 298
+        bg.name = "scoreBoardBackground"
+        uiNode.addChild(bg)
+        scoreBoardBackground = bg
+
+        let shadow = SKLabelNode(text: "玩家 0 : 0 Bot")
+        shadow.fontSize = 32
+        shadow.fontName = "AvenirNext-Bold"
+        shadow.fontColor = UIColor.black.withAlphaComponent(0.55)
+        shadow.position = CGPoint(x: 0, y: -2)
+        shadow.zPosition = 299
+        uiNode.addChild(shadow)
+        scoreBoardShadow = shadow
+
         let board = SKLabelNode(text: "玩家 0 : 0 Bot")
-        board.fontSize = 26
+        board.fontSize = 32
+        board.fontName = "AvenirNext-Bold"
         board.fontColor = .white
         board.zPosition = 300
+        board.horizontalAlignmentMode = .center
+        board.verticalAlignmentMode = .center
         uiNode.addChild(board)
         scoreBoardLabel = board
 
+        let playerTrack = SKShapeNode(rectOf: CGSize(width: progressBarWidth, height: progressBarHeight), cornerRadius: progressBarHeight / 2)
+        playerTrack.fillColor = UIColor.white.withAlphaComponent(0.12)
+        playerTrack.strokeColor = UIColor.white.withAlphaComponent(0.35)
+        playerTrack.lineWidth = 1.5
+        playerTrack.zPosition = 299
+        uiNode.addChild(playerTrack)
+        playerProgressTrack = playerTrack
+
+        let playerFill = SKSpriteNode(color: UIColor(red: 0.15, green: 0.85, blue: 0.35, alpha: 0.9),
+                                      size: CGSize(width: progressBarWidth, height: progressBarHeight))
+        playerFill.anchorPoint = CGPoint(x: 0.0, y: 0.5)
+        playerFill.zPosition = 300
+        playerTrack.addChild(playerFill)
+        playerProgressBar = playerFill
+
+        let botTrack = SKShapeNode(rectOf: CGSize(width: progressBarWidth, height: progressBarHeight), cornerRadius: progressBarHeight / 2)
+        botTrack.fillColor = UIColor.white.withAlphaComponent(0.12)
+        botTrack.strokeColor = UIColor.white.withAlphaComponent(0.35)
+        botTrack.lineWidth = 1.5
+        botTrack.zPosition = 299
+        uiNode.addChild(botTrack)
+        botProgressTrack = botTrack
+
+        let botFill = SKSpriteNode(color: UIColor(red: 0.9, green: 0.25, blue: 0.35, alpha: 0.9),
+                                   size: CGSize(width: progressBarWidth, height: progressBarHeight))
+        botFill.anchorPoint = CGPoint(x: 1.0, y: 0.5)
+        botFill.zPosition = 300
+        botTrack.addChild(botFill)
+        botProgressBar = botFill
+
         let timer = SKLabelNode(text: "01:00")
         timer.fontSize = 30
+        timer.fontName = "AvenirNext-Bold"
         timer.fontColor = .yellow
         timer.zPosition = 300
+        timer.horizontalAlignmentMode = .center
         uiNode.addChild(timer)
         timerLabel = timer
 
         let hint = SKLabelNode(text: "抢到核心，带回中心区！")
         hint.fontSize = 18
+        hint.fontName = "AvenirNext-DemiBold"
         hint.fontColor = .yellow
         hint.zPosition = 300
         uiNode.addChild(hint)
@@ -345,15 +410,31 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             knob.position = base.position
         }
 
-        scoreBoardLabel?.position = CGPoint(x: 0, y: halfHeight - 42)
-        timerLabel?.position = CGPoint(x: 0, y: halfHeight - 78)
-        hintLabel?.position = CGPoint(x: 0, y: halfHeight - 108)
+        let scoreY = halfHeight - 42
+        let scorePos = CGPoint(x: 0, y: scoreY)
+        scoreBoardBackground?.position = scorePos
+        scoreBoardShadow?.position = CGPoint(x: scorePos.x, y: scorePos.y - 2)
+        scoreBoardLabel?.position = scorePos
+
+        let barY = scoreY - 22
+        playerProgressTrack?.position = CGPoint(x: -scoreBackgroundSize.width / 2 + progressBarWidth / 2 + 14, y: barY)
+        botProgressTrack?.position = CGPoint(x: scoreBackgroundSize.width / 2 - progressBarWidth / 2 - 14, y: barY)
+        playerProgressBar?.position = CGPoint(x: -progressBarWidth / 2, y: 0)
+        botProgressBar?.position = CGPoint(x: progressBarWidth / 2, y: 0)
+
+        timerLabel?.position = CGPoint(x: 0, y: scoreY - 54)
+        hintLabel?.position = CGPoint(x: 0, y: scoreY - 88)
     }
 
     // MARK: - 触摸（更宽松：左下角区域即可启动摇杆）
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard !isMatchOver, let touch = touches.first else { return }
+        guard let touch = touches.first else { return }
         let loc = uiNode.convert(touch.location(in: self), from: self)
+
+        if isMatchOver {
+            _ = handleMatchEndTouch(at: loc)
+            return
+        }
 
         if let base = joystick {
             let d = hypot(loc.x - base.position.x, loc.y - base.position.y)
@@ -595,6 +676,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             isMatchOver = true
             let finalText = (playerScore >= targetScore) ? "🎉 玩家阵营胜利！" : "🤖 Bot阵营胜利！"
             showMessage(finalText, color: (playerScore >= targetScore) ? .green : .red)
+            showMatchEndOverlay()
             return
         }
 
@@ -632,13 +714,139 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - UI helpers
     private func updateScoreBoard() {
-        scoreBoardLabel?.text = "玩家 \(playerScore) : \(botScore) Bot"
+        let text = "玩家 \(playerScore) : \(botScore) Bot"
+        scoreBoardLabel?.text = text
+        scoreBoardShadow?.text = text
+
+        let playerRatio = CGFloat(playerScore) / CGFloat(max(targetScore, 1))
+        let botRatio = CGFloat(botScore) / CGFloat(max(targetScore, 1))
+        playerProgressBar?.xScale = max(0.0, min(1.0, playerRatio))
+        botProgressBar?.xScale = max(0.0, min(1.0, botRatio))
+
+        animateScoreBoardChange()
     }
 
     private func updateTimerLabel() {
         let minutes = Int(roundTimeRemaining) / 60
         let seconds = Int(roundTimeRemaining) % 60
         timerLabel?.text = String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func animateScoreBoardChange() {
+        let pulse = SKAction.sequence([
+            .scale(to: 1.12, duration: 0.08),
+            .scale(to: 1.0, duration: 0.14)
+        ])
+
+        if let label = scoreBoardLabel {
+            label.removeAction(forKey: "scorePulse")
+            label.run(pulse, withKey: "scorePulse")
+        }
+
+        if let shadow = scoreBoardShadow, let copy = pulse.copy() as? SKAction {
+            shadow.removeAction(forKey: "scorePulse")
+            shadow.run(copy, withKey: "scorePulse")
+        }
+
+        if let bg = scoreBoardBackground {
+            bg.removeAction(forKey: "scoreFlash")
+            let originalColor = bg.fillColor
+            let flash = SKAction.sequence([
+                .run { bg.fillColor = UIColor(red: 0.18, green: 0.4, blue: 0.7, alpha: 0.92) },
+                .wait(forDuration: 0.16),
+                .run { bg.fillColor = originalColor }
+            ])
+            bg.run(flash, withKey: "scoreFlash")
+        }
+    }
+
+    private func showMatchEndOverlay() {
+        matchEndOverlay?.removeFromParent()
+
+        let overlay = SKNode()
+        overlay.zPosition = 1200
+        overlay.name = "matchEndOverlay"
+        overlay.alpha = 0.0
+
+        let panel = SKShapeNode(rectOf: CGSize(width: size.width * 0.78, height: 190), cornerRadius: 18)
+        panel.fillColor = UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 0.86)
+        panel.strokeColor = UIColor.white.withAlphaComponent(0.9)
+        panel.lineWidth = 3
+        panel.zPosition = 0
+        overlay.addChild(panel)
+
+        let title = SKLabelNode(text: "比赛结束")
+        title.fontName = "AvenirNext-Heavy"
+        title.fontSize = 34
+        title.fontColor = .white
+        title.position = CGPoint(x: 0, y: 42)
+        title.zPosition = 1
+        overlay.addChild(title)
+
+        let subtitle = SKLabelNode(text: "再来一局？")
+        subtitle.fontName = "AvenirNext-DemiBold"
+        subtitle.fontSize = 22
+        subtitle.fontColor = UIColor.white.withAlphaComponent(0.85)
+        subtitle.position = CGPoint(x: 0, y: 12)
+        subtitle.zPosition = 1
+        overlay.addChild(subtitle)
+
+        let button = SKShapeNode(rectOf: CGSize(width: 220, height: 66), cornerRadius: 14)
+        button.name = "restartButton"
+        button.fillColor = UIColor(red: 0.2, green: 0.8, blue: 0.45, alpha: 0.95)
+        button.strokeColor = UIColor.white
+        button.lineWidth = 2
+        button.position = CGPoint(x: 0, y: -44)
+        button.zPosition = 1
+        overlay.addChild(button)
+
+        let buttonLabel = SKLabelNode(text: "再来一局")
+        buttonLabel.fontName = "AvenirNext-Bold"
+        buttonLabel.fontSize = 26
+        buttonLabel.fontColor = .white
+        buttonLabel.verticalAlignmentMode = .center
+        buttonLabel.zPosition = 2
+        button.addChild(buttonLabel)
+
+        overlay.position = CGPoint(x: 0, y: 0)
+        overlay.setScale(0.88)
+        uiNode.addChild(overlay)
+        matchEndOverlay = overlay
+
+        overlay.run(.group([
+            .fadeIn(withDuration: 0.2),
+            .scale(to: 1.0, duration: 0.2)
+        ]))
+    }
+
+    private func resetMatch() {
+        isMatchOver = false
+        isRoundActive = false
+        playerScore = 0
+        botScore = 0
+        roundIndex = 0
+        roundTimeRemaining = roundDuration
+        matchEndOverlay?.removeFromParent()
+        matchEndOverlay = nil
+        updateScoreBoard()
+        updateTimerLabel()
+        startRound()
+    }
+
+    @discardableResult
+    private func handleMatchEndTouch(at point: CGPoint) -> Bool {
+        let nodesHit = uiNode.nodes(at: point)
+        for node in nodesHit {
+            if node.name == "restartButton" || node.parent?.name == "restartButton" {
+                matchEndOverlay?.run(.sequence([
+                    .scale(to: 1.04, duration: 0.08),
+                    .scale(to: 1.0, duration: 0.08)
+                ]))
+                resetMatch()
+                return true
+            }
+        }
+        return false
     }
 
     private func showMessage(_ text: String, color: UIColor) {
