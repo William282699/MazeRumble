@@ -9,8 +9,14 @@ import SpriteKit
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
     
+    enum Team {
+        case player
+        case bot
+    }
+    
     // MARK: - 游戏对象
     var players: [SKShapeNode] = []              // 8个玩家
+    var spawnPositions: [CGPoint] = []           // 出生点
     var core: SKShapeNode?                        // 核心物品
     var coreHolder: SKShapeNode?                  // 谁拿着核心
     
@@ -21,12 +27,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     var isTouching = false                        // 是否正在触摸
     
     // MARK: - UI
-    var scoreLabel: SKLabelNode?                  // 分数显示
+    var scoreBoardLabel: SKLabelNode?             // 阵营比分
     var timerLabel: SKLabelNode?                  // 计时器
-    var gameTime: TimeInterval = 0                // 游戏时长
+    var roundTimeRemaining: TimeInterval = 60     // 回合剩余时长
+    var lastUpdateTime: TimeInterval = 0          // 上一帧时间戳
     
     // MARK: - 游戏状态
-    var isGameOver = false
+    var playerScore = 0
+    var botScore = 0
+    var targetScore = 3
+    var roundDuration: TimeInterval = 60
+    var isRoundActive = false
+    var isMatchOver = false
+    var roundIndex = 0
     
     // MARK: - 初始化场景
     override func didMove(to view: SKView) {
@@ -44,6 +57,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         createPlayers()
         createJoystick()
         createUI()
+        startRound()
     }
     
     // MARK: - 创建边界
@@ -154,12 +168,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let angle = CGFloat(i) * .pi / 4  // 每45度一个
             let x = centerX + cos(angle) * spawnRadius
             let y = centerY + sin(angle) * spawnRadius
+            let spawn = CGPoint(x: x, y: y)
+            spawnPositions.append(spawn)
             
             let player = SKShapeNode(circleOfRadius: 20)
             player.fillColor = colors[i]
             player.strokeColor = .black
             player.lineWidth = 2
-            player.position = CGPoint(x: x, y: y)
+            player.position = spawn
             player.name = "player_\(i)"
             
             // 物理体
@@ -237,11 +253,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     // MARK: - 创建UI
     func createUI() {
+        // 阵营比分
+        let board = SKLabelNode(text: "玩家 0 : 0 Bot")
+        board.fontSize = 28
+        board.fontColor = .white
+        board.position = CGPoint(x: size.width / 2, y: size.height - 40)
+        board.zPosition = 100
+        addChild(board)
+        scoreBoardLabel = board
+        
         // 计时器
-        let timer = SKLabelNode(text: "00:00")
+        let timer = SKLabelNode(text: "01:00")
         timer.fontSize = 32
-        timer.fontColor = .white
-        timer.position = CGPoint(x: size.width / 2, y: size.height - 50)
+        timer.fontColor = .yellow
+        timer.position = CGPoint(x: size.width / 2, y: size.height - 80)
         timer.zPosition = 100
         addChild(timer)
         timerLabel = timer
@@ -315,13 +340,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     // MARK: - 每帧更新
     override func update(_ currentTime: TimeInterval) {
-        guard !isGameOver else { return }
+        if lastUpdateTime == 0 {
+            lastUpdateTime = currentTime
+        }
+        let deltaTime = currentTime - lastUpdateTime
+        lastUpdateTime = currentTime
+        
+        guard isRoundActive, !isMatchOver else { return }
         
         // 更新计时器
-        gameTime += 1.0 / 60.0
-        let minutes = Int(gameTime) / 60
-        let seconds = Int(gameTime) % 60
-        timerLabel?.text = String(format: "%02d:%02d", minutes, seconds)
+        roundTimeRemaining = max(0, roundTimeRemaining - deltaTime)
+        updateTimerLabel()
+        if roundTimeRemaining <= 0 {
+            endRound(winner: nil)
+            return
+        }
         
         // 更新玩家移动
         updatePlayerMovement()
@@ -463,44 +496,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         )
         
         if distance < 100 {
-            // 进入中心区，开始读条
-            // 简化版：直接判定胜利
-            gameOver(winner: holder)
-        }
-    }
-    
-    func gameOver(winner: SKShapeNode) {
-        isGameOver = true
-        
-        let isPlayer1 = winner == players.first
-        let text = isPlayer1 ? "🎉 你赢了！" : "😭 Bot赢了"
-        
-        let label = SKLabelNode(text: text)
-        label.fontSize = 60
-        label.fontColor = isPlayer1 ? .green : .red
-        label.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        label.zPosition = 200
-        addChild(label)
-        
-        // 放大动画
-        label.setScale(0)
-        label.run(SKAction.scale(to: 1.0, duration: 0.5))
-        
-        // 3秒后重启
-        run(SKAction.sequence([
-            SKAction.wait(forDuration: 3),
-            SKAction.run { [weak self] in
-                self?.restartGame()
-            }
-        ]))
-    }
-    
-    func restartGame() {
-        // 简单重启：重新加载场景
-        if let view = self.view {
-            let newScene = GameScene(size: self.size)
-            newScene.scaleMode = .aspectFill
-            view.presentScene(newScene, transition: SKTransition.fade(withDuration: 0.5))
+            // 进入中心区，算作得分
+            let team: Team = (holder == players.first) ? .player : .bot
+            endRound(winner: team)
         }
     }
     
@@ -545,5 +543,88 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             SKAction.fadeOut(withDuration: 0.5),
             SKAction.removeFromParent()
         ]))
+    }
+    
+    func startRound() {
+        guard !isMatchOver else { return }
+        
+        roundIndex += 1
+        isRoundActive = true
+        roundTimeRemaining = roundDuration
+        lastUpdateTime = 0
+        resetEntitiesForRound()
+        updateTimerLabel()
+        updateScoreBoard()
+        showMessage("第\(roundIndex)回合开始", color: .cyan)
+    }
+    
+    func endRound(winner: Team?) {
+        guard isRoundActive else { return }
+        
+        isRoundActive = false
+        
+        if let winner = winner {
+            switch winner {
+            case .player:
+                playerScore += 1
+                showMessage("玩家得分！", color: .green)
+            case .bot:
+                botScore += 1
+                showMessage("Bot得分！", color: .red)
+            }
+        } else {
+            showMessage("时间到，回合重置", color: .yellow)
+        }
+        
+        resetEntitiesForRound()
+        updateScoreBoard()
+        
+        if playerScore >= targetScore || botScore >= targetScore {
+            isMatchOver = true
+            let finalText = playerScore >= targetScore ? "🎉 玩家阵营胜利！" : "🤖 Bot阵营胜利！"
+            showMessage(finalText, color: playerScore >= targetScore ? .green : .red)
+            return
+        }
+        
+        run(SKAction.sequence([
+            SKAction.wait(forDuration: 2),
+            SKAction.run { [weak self] in
+                self?.startRound()
+            }
+        ]))
+    }
+    
+    func resetEntitiesForRound() {
+        coreHolder = nil
+        core?.removeAllActions()
+        core?.position = CGPoint(x: size.width / 2, y: size.height / 2 + 150)
+        if let core = core, core.parent == nil {
+            addChild(core)
+        }
+        let rotate = SKAction.rotate(byAngle: .pi * 2, duration: 2.0)
+        core?.run(SKAction.repeatForever(rotate))
+        
+        for (index, player) in players.enumerated() {
+            if index < spawnPositions.count {
+                player.position = spawnPositions[index]
+            }
+            player.setScale(1.0)
+            player.childNode(withName: "glow")?.removeFromParent()
+            player.zRotation = 0
+            if let body = player.physicsBody {
+                body.velocity = .zero
+                body.angularVelocity = 0
+            }
+        }
+    }
+    
+    func updateScoreBoard() {
+        scoreBoardLabel?.text = "玩家 \(playerScore) : \(botScore) Bot"
+    }
+    
+    func updateTimerLabel() {
+        let minutes = Int(roundTimeRemaining) / 60
+        let seconds = Int(roundTimeRemaining) % 60
+        timerLabel?.text = String(format: "%02d:%02d", minutes, seconds)
     }
 }
