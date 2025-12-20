@@ -1,0 +1,14 @@
+.DS_Store
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# SwiftPM Xcode
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
