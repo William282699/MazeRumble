@@ -66,12 +66,29 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private let dropImpulseThreshold: CGFloat = 50          // 撞击阈值：超过才掉核（只对玩家撞玩家生效）
 
+    // MARK: - 世界 / 相机
+    private let worldScaleFactor: CGFloat = 3.0
+    private var worldSize: CGSize = .zero
+    private let worldNode = SKNode()
+    private let uiNode = SKNode()
+    private let cameraNode = SKCameraNode()
+    private let cameraLerp: CGFloat = 0.18
+
     // MARK: - 初始化场景
     override func didMove(to view: SKView) {
         backgroundColor = SKColor(red: 0.15, green: 0.15, blue: 0.2, alpha: 1.0)
 
         physicsWorld.contactDelegate = self
         physicsWorld.gravity = .zero
+
+        worldSize = CGSize(width: size.width * worldScaleFactor,
+                           height: size.height * worldScaleFactor)
+
+        addChild(worldNode)
+        addChild(cameraNode)
+        cameraNode.addChild(uiNode)
+        camera = cameraNode
+        uiNode.zPosition = 10_000
 
         createBorder()
         createMaze()
@@ -80,24 +97,44 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         createPlayers()
         createJoystick()
         createUI()
+        layoutUI()
+        focusCameraInstantly()
         startRound()
+    }
+
+    override func didChangeSize(_ oldSize: CGSize) {
+        super.didChangeSize(oldSize)
+        layoutUI()
+    }
+
+    private var worldCenter: CGPoint {
+        CGPoint(x: worldSize.width / 2, y: worldSize.height / 2)
     }
 
     // MARK: - 边界（和 size 对齐）
     private func createBorder() {
-        physicsBody = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero, size: size))
+        physicsBody = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero, size: worldSize))
         physicsBody?.friction = 0.0
     }
 
     // MARK: - 迷宫墙体
     private func createMaze() {
+        let w = worldSize.width
+        let h = worldSize.height
+
         let wallData: [[CGFloat]] = [
-            [size.width * 0.3, size.height * 0.5, 20, 200],
-            [size.width * 0.5, size.height * 0.7, 250, 20],
-            [size.width * 0.7, size.height * 0.4, 20, 180],
-            [size.width * 0.5, size.height * 0.3, 200, 20],
-            [size.width * 0.2, size.height * 0.25, 150, 20],
-            [size.width * 0.8, size.height * 0.65, 120, 20],
+            [w * 0.5, h * 0.55, w * 0.6, 24],
+            [w * 0.5, h * 0.42, w * 0.55, 24],
+            [w * 0.35, h * 0.68, 24, h * 0.26],
+            [w * 0.65, h * 0.32, 24, h * 0.28],
+            [w * 0.2, h * 0.5, 180, 24],
+            [w * 0.8, h * 0.5, 180, 24],
+            [w * 0.5, h * 0.75, 280, 24],
+            [w * 0.5, h * 0.25, 280, 24],
+            [w * 0.25, h * 0.25, 24, 240],
+            [w * 0.75, h * 0.75, 24, 240],
+            [w * 0.5, h * 0.62, 180, 24],
+            [w * 0.58, h * 0.18, 200, 24]
         ]
 
         for data in wallData {
@@ -118,13 +155,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             wall.physicsBody?.collisionBitMask = PhysicsCategory.player
             wall.physicsBody?.contactTestBitMask = 0
 
-            addChild(wall)
+            worldNode.addChild(wall)
         }
     }
 
     // MARK: - 中心区域
     private func createCenterZone() {
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let center = worldCenter
 
         let zone = SKShapeNode(circleOfRadius: centerZoneRadius)
         zone.fillColor = .yellow
@@ -134,7 +171,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         zone.position = center
         zone.zPosition = 1
         zone.name = "centerZone"
-        addChild(zone)
+        worldNode.addChild(zone)
 
         let pulse = SKAction.sequence([
             SKAction.scale(to: 1.08, duration: 1.0),
@@ -147,15 +184,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         label.fontColor = .white
         label.position = center
         label.zPosition = 2
-        addChild(label)
+        worldNode.addChild(label)
     }
 
     // MARK: - 核心
     private func createCore() {
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let center = worldCenter
 
         // ✅ 自适应：不要固定 +150（竖屏宽很窄时容易顶到边上）
-        let offset = min(size.width, size.height) * 0.28
+        let offset = min(worldSize.width, worldSize.height) * 0.28
 
         let c = SKShapeNode(rectOf: CGSize(width: 30, height: 30))
         c.fillColor = SKColor(red: 1.0, green: 0.2, blue: 0.2, alpha: 1.0)
@@ -170,7 +207,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let rotate = SKAction.rotate(byAngle: .pi * 2, duration: 2.0)
         c.run(.repeatForever(rotate))
 
-        addChild(c)
+        worldNode.addChild(c)
         core = c
     }
 
@@ -181,10 +218,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             .orange, .purple, .cyan, .white
         ]
 
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let center = worldCenter
 
         // ✅ 关键：自适应出生半径，避免 iPhone 竖屏时生成在边界外被挤成一坨
-        let spawnRadius: CGFloat = min(size.width, size.height) * 0.34
+        let spawnRadius: CGFloat = min(worldSize.width, worldSize.height) * 0.18
 
         spawnPositions.removeAll()
         players.removeAll()
@@ -216,7 +253,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             p.physicsBody?.collisionBitMask = PhysicsCategory.player | PhysicsCategory.wall
             p.physicsBody?.contactTestBitMask = PhysicsCategory.player   // 只关心玩家撞玩家（用于掉核判断）
 
-            addChild(p)
+            worldNode.addChild(p)
             players.append(p)
         }
 
@@ -224,7 +261,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         if let me = players.first {
             let ring = SKShapeNode(circleOfRadius: 26)
             ring.strokeColor = .white
-            ring.lineWidth = 3
+            ring.lineWidth = 4
             ring.glowWidth = 4
             ring.fillColor = .clear
             ring.zPosition = 100
@@ -238,6 +275,19 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             you.zPosition = 101
             you.name = "youLabel"
             me.addChild(you)
+
+            let arrowPath = CGMutablePath()
+            arrowPath.move(to: CGPoint(x: -10, y: 46))
+            arrowPath.addLine(to: CGPoint(x: 10, y: 46))
+            arrowPath.addLine(to: CGPoint(x: 0, y: 70))
+            arrowPath.closeSubpath()
+            let arrow = SKShapeNode(path: arrowPath)
+            arrow.fillColor = .white
+            arrow.strokeColor = .black
+            arrow.lineWidth = 2
+            arrow.zPosition = 102
+            arrow.name = "youArrow"
+            me.addChild(arrow)
         }
     }
 
@@ -247,18 +297,16 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         base.fillColor = SKColor.gray.withAlphaComponent(0.35)
         base.strokeColor = .white
         base.lineWidth = 2
-        base.position = CGPoint(x: 110, y: 130)
         base.zPosition = 200
-        addChild(base)
+        uiNode.addChild(base)
         joystick = base
 
         let knob = SKShapeNode(circleOfRadius: joystickKnobRadius)
         knob.fillColor = SKColor.white.withAlphaComponent(0.65)
         knob.strokeColor = .black
         knob.lineWidth = 2
-        knob.position = base.position
         knob.zPosition = 201
-        addChild(knob)
+        uiNode.addChild(knob)
         joystickKnob = knob
     }
 
@@ -267,36 +315,49 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let board = SKLabelNode(text: "玩家 0 : 0 Bot")
         board.fontSize = 26
         board.fontColor = .white
-        board.position = CGPoint(x: size.width / 2, y: size.height - 42)
         board.zPosition = 300
-        addChild(board)
+        uiNode.addChild(board)
         scoreBoardLabel = board
 
         let timer = SKLabelNode(text: "01:00")
         timer.fontSize = 30
         timer.fontColor = .yellow
-        timer.position = CGPoint(x: size.width / 2, y: size.height - 78)
         timer.zPosition = 300
-        addChild(timer)
+        uiNode.addChild(timer)
         timerLabel = timer
 
         let hint = SKLabelNode(text: "抢到核心，带回中心区！")
         hint.fontSize = 18
         hint.fontColor = .yellow
-        hint.position = CGPoint(x: size.width / 2, y: size.height - 108)
         hint.zPosition = 300
-        addChild(hint)
+        uiNode.addChild(hint)
         hintLabel = hint
+    }
+
+    private func layoutUI() {
+        let halfWidth = size.width / 2
+        let halfHeight = size.height / 2
+
+        if let base = joystick {
+            base.position = CGPoint(x: -halfWidth + 110, y: -halfHeight + 130)
+        }
+        if let knob = joystickKnob, let base = joystick {
+            knob.position = base.position
+        }
+
+        scoreBoardLabel?.position = CGPoint(x: 0, y: halfHeight - 42)
+        timerLabel?.position = CGPoint(x: 0, y: halfHeight - 78)
+        hintLabel?.position = CGPoint(x: 0, y: halfHeight - 108)
     }
 
     // MARK: - 触摸（更宽松：左下角区域即可启动摇杆）
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard !isMatchOver, let touch = touches.first else { return }
-        let loc = touch.location(in: self)
+        let loc = uiNode.convert(touch.location(in: self), from: self)
 
         if let base = joystick {
             let d = hypot(loc.x - base.position.x, loc.y - base.position.y)
-            if d <= joystickTouchRadius || (loc.x < size.width * 0.55 && loc.y < size.height * 0.5) {
+            if d <= joystickTouchRadius || (loc.x < 0 && loc.y < 0) {
                 isTouching = true
                 updateJoystick(with: loc)
             }
@@ -305,7 +366,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard !isMatchOver, isTouching, let touch = touches.first else { return }
-        updateJoystick(with: touch.location(in: self))
+        let loc = uiNode.convert(touch.location(in: self), from: self)
+        updateJoystick(with: loc)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -370,6 +432,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         updateBotAI()
         checkCorePickup()
         checkWinCondition()
+        updateCameraFollow()
     }
 
     // MARK: - 你（0号玩家）移动：目标速度插值
@@ -465,7 +528,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - 胜利条件：持核进入中心区立刻得分
     private func checkWinCondition() {
         guard let holder = coreHolder else { return }
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let center = worldCenter
         let d = hypot(holder.position.x - center.x, holder.position.y - center.y)
         if d < centerZoneRadius {
             let team: Team = (holder == players.first) ? .player : .bot
@@ -504,6 +567,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         resetEntitiesForRound()
         updateTimerLabel()
         updateScoreBoard()
+        focusCameraInstantly()
 
         showMessage("第\(roundIndex)回合开始", color: .cyan)
     }
@@ -546,10 +610,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         if let c = core {
             c.removeAllActions()
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let offset = min(size.width, size.height) * 0.28
+            let center = worldCenter
+            let offset = min(worldSize.width, worldSize.height) * 0.28
             c.position = CGPoint(x: center.x, y: center.y + offset)
-            if c.parent == nil { addChild(c) }
+            if c.parent == nil { worldNode.addChild(c) }
             c.zPosition = 20
             c.zRotation = .pi / 4
             c.run(.repeatForever(.rotate(byAngle: .pi * 2, duration: 2.0)))
@@ -581,9 +645,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let label = SKLabelNode(text: text)
         label.fontSize = 22
         label.fontColor = color
-        label.position = CGPoint(x: size.width / 2, y: size.height - 135)
+        label.position = CGPoint(x: 0, y: size.height / 2 - 135)
         label.zPosition = 400
-        addChild(label)
+        uiNode.addChild(label)
 
         label.run(.sequence([
             .fadeIn(withDuration: 0.05),
@@ -591,5 +655,37 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             .fadeOut(withDuration: 0.35),
             .removeFromParent()
         ]))
+    }
+
+    private func clampCameraPosition(_ position: CGPoint) -> CGPoint {
+        let halfWidth = size.width / 2
+        let halfHeight = size.height / 2
+
+        let minX = halfWidth
+        let maxX = max(halfWidth, worldSize.width - halfWidth)
+        let minY = halfHeight
+        let maxY = max(halfHeight, worldSize.height - halfHeight)
+
+        let clampedX = min(max(position.x, minX), maxX)
+        let clampedY = min(max(position.y, minY), maxY)
+        return CGPoint(x: clampedX, y: clampedY)
+    }
+
+    private func focusCameraInstantly() {
+        if let me = players.first {
+            cameraNode.position = clampCameraPosition(me.position)
+        } else {
+            cameraNode.position = clampCameraPosition(worldCenter)
+        }
+    }
+
+    private func updateCameraFollow() {
+        guard let me = players.first else { return }
+        let target = me.position
+        let desired = CGPoint(
+            x: cameraNode.position.x + (target.x - cameraNode.position.x) * cameraLerp,
+            y: cameraNode.position.y + (target.y - cameraNode.position.y) * cameraLerp
+        )
+        cameraNode.position = clampCameraPosition(desired)
     }
 }
