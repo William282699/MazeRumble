@@ -5,7 +5,6 @@
 //  Created by Yuqiao Huang on 2025-12-19.
 //
 
-
 import UIKit
 import SpriteKit
 
@@ -13,29 +12,22 @@ class GameViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        if let view = self.view as! SKView? {
-            // 创建场景
-            let scene = GameScene(size: view.bounds.size)
-            scene.scaleMode = .aspectFill
-            
-            // 展示场景
-            view.presentScene(scene)
-            
-            // 调试选项
-            view.ignoresSiblingOrder = true
-            view.showsFPS = true       // 显示帧率
-            view.showsNodeCount = true // 显示节点数
-            
-           
-        }
-    }
-    
-    override var prefersStatusBarHidden: Bool {
-        return true
+
+        guard let skView = self.view as? SKView else { return }
+
+        // ✅ 用代码创建 scene，避免 .sks 的尺寸/anchorPoint/scaleMode 问题
+        let scene = GameScene(size: skView.bounds.size)
+        scene.scaleMode = .resizeFill
+
+        skView.presentScene(scene)
+        skView.ignoresSiblingOrder = true
+
+        skView.showsFPS = true
+        skView.showsNodeCount = true
+        skView.showsPhysics = false
     }
 
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        return .landscape  // 横屏
+    override var prefersStatusBarHidden: Bool {
+        true
     }
 }
