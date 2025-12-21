@@ -22,7 +22,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // MARK: - 游戏对象
-    private var players: [SKShapeNode] = []          // 8个玩家（0号是你）
+    private var players: [Player] = []          // 8个玩家（0号是你）
     private var spawnPositions: [CGPoint] = []       // 出生点
     private var core: SKShapeNode?                   // 核心物品
     private var coreHolder: SKShapeNode?             // 谁拿着核心
@@ -267,61 +267,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let spawn = CGPoint(x: x, y: y)
             spawnPositions.append(spawn)
 
-            let p = SKShapeNode(circleOfRadius: 20)
-            p.fillColor = colors[i]
-            p.strokeColor = .black
-            p.lineWidth = 2
-            p.position = spawn
-            p.zPosition = 10
-            p.name = "player_\(i)"
+            let player = Player(index: i, color: colors[i], isMainPlayer: i == 0)
+            player.position = spawn
 
-            p.physicsBody = SKPhysicsBody(circleOfRadius: 20)
-            p.physicsBody?.isDynamic = true
-            p.physicsBody?.mass = 1.0
-            p.physicsBody?.friction = 0.2
-            p.physicsBody?.restitution = 0.35
-            p.physicsBody?.linearDamping = 2.2
-            p.physicsBody?.allowsRotation = false
-
-            p.physicsBody?.categoryBitMask = PhysicsCategory.player
-            p.physicsBody?.collisionBitMask = PhysicsCategory.player | PhysicsCategory.wall
-            p.physicsBody?.contactTestBitMask = PhysicsCategory.player   // 只关心玩家撞玩家（用于掉核判断）
-
-            worldNode.addChild(p)
-            players.append(p)
-        }
-
-        // ✅ 0号玩家是你：加 “YOU” + 光环
-        if let me = players.first {
-            let ring = SKShapeNode(circleOfRadius: 26)
-            ring.strokeColor = .white
-            ring.lineWidth = 4
-            ring.glowWidth = 4
-            ring.fillColor = .clear
-            ring.zPosition = 100
-            ring.name = "youRing"
-            me.addChild(ring)
-
-            let you = SKLabelNode(text: "YOU")
-            you.fontSize = 14
-            you.fontColor = .white
-            you.position = CGPoint(x: 0, y: 34)
-            you.zPosition = 101
-            you.name = "youLabel"
-            me.addChild(you)
-
-            let arrowPath = CGMutablePath()
-            arrowPath.move(to: CGPoint(x: -10, y: 46))
-            arrowPath.addLine(to: CGPoint(x: 10, y: 46))
-            arrowPath.addLine(to: CGPoint(x: 0, y: 70))
-            arrowPath.closeSubpath()
-            let arrow = SKShapeNode(path: arrowPath)
-            arrow.fillColor = .white
-            arrow.strokeColor = .black
-            arrow.lineWidth = 2
-            arrow.zPosition = 102
-            arrow.name = "youArrow"
-            me.addChild(arrow)
+            worldNode.addChild(player)
+            players.append(player)
         }
     }
 
