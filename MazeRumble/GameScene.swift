@@ -21,11 +21,43 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         static let wall: UInt32   = 1 << 1
     }
 
+    // MARK: - 参数（集中调节）
+    private let pickupDistance: CGFloat = 40
+    private let dropHitsRequired = 3
+    private let dropDistance: CGFloat = 80
+
+    private let itemInterval: TimeInterval = 8
+    private let maxItemsPerPlayer = 3
+
+    private let finalDashTriggerDistance: CGFloat = 100
+    private let finalDashDuration: TimeInterval = 5
+    private let finalDashSpeedMultiplier: CGFloat = 1.5
+
+    private let gateCount = 5
+    private let gateWinDistance: CGFloat = 50
+    private let gateSize = CGSize(width: 40, height: 80)
+
+    private let gameTimeLimit: TimeInterval = 120
+
     // MARK: - 游戏对象
     private var players: [SKShapeNode] = []          // 8个玩家（0号是你）
     private var spawnPositions: [CGPoint] = []       // 出生点
     private var core: SKShapeNode?                   // 核心物品
     private var coreHolder: SKShapeNode?             // 谁拿着核心
+    private var coreHitCount = 0
+    private var coreArrow: SKShapeNode?
+
+    // 道具与计时
+    private var playerItems: [[String]] = Array(repeating: [], count: 8)
+    private var lastItemGiveTime: TimeInterval = 0
+
+    // 终点门
+    private var gates: [SKShapeNode] = []
+
+    // 破门冲刺
+    private var finalDashTriggered = false
+    private var finalDashEndTime: TimeInterval = 0
+    private var finalDashUsed = false
 
     // MARK: - 控制（虚拟摇杆）
     private var joystick: SKShapeNode?
@@ -43,20 +75,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var botProgressBar: SKSpriteNode?
     private var timerLabel: SKLabelNode?
     private var hintLabel: SKLabelNode?
-    private var matchEndOverlay: SKNode?
 
-    private var roundTimeRemaining: TimeInterval = 60
+    private var roundTimeRemaining: TimeInterval = 120
     private var lastUpdateTime: TimeInterval = 0
 
     // MARK: - 游戏状态
-    private var playerScore = 0
-    private var botScore = 0
-    private let targetScore = 3
-
-    private let roundDuration: TimeInterval = 60
-    private var isRoundActive = false
     private var isMatchOver = false
-    private var roundIndex = 0
 
     // MARK: - 参数（易调）
     private let centerZoneRadius: CGFloat = 100
@@ -70,8 +94,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private let progressBarWidth: CGFloat = 150
     private let progressBarHeight: CGFloat = 12
 
-    private let playerMaxSpeed: CGFloat = 230               // 你最大速度
-    private let botMaxSpeed: CGFloat = 200                  // Bot 最大速度
+    private let playerMaxSpeed: CGFloat = 300               // 你最大速度（基础速率，最终会乘以加成）
+    private let botMaxSpeed: CGFloat = 220                  // Bot 最大速度（基础速率）
     private let accelLerp: CGFloat = 0.25                   // 速度插值系数（越大越跟手，0.15~0.30）
     private let botAccelLerp: CGFloat = 0.18
 
@@ -104,6 +128,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         createBorder()
         createMaze()
         createCenterZone()
+        createGates()
         createCore()
         createPlayers()
         createJoystick()
@@ -196,6 +221,43 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         label.position = center
         label.zPosition = 2
         worldNode.addChild(label)
+    }
+
+    // MARK: - 终点门
+    private func createGates() {
+        gates.forEach { $0.removeFromParent() }
+        gates.removeAll()
+
+        let usableWidth = worldSize.width * 0.8
+        let startX = (worldSize.width - usableWidth) / 2
+        let y = worldSize.height - gateSize.height
+
+        for i in 0..<gateCount {
+            let gate = SKShapeNode(rectOf: gateSize, cornerRadius: 6)
+            gate.fillColor = SKColor.green.withAlphaComponent(0.5)
+            gate.strokeColor = SKColor.green
+            gate.lineWidth = 3
+            let x = startX + CGFloat(i) * (usableWidth / CGFloat(gateCount - 1))
+            gate.position = CGPoint(x: x, y: y)
+            gate.zPosition = 3
+            gate.name = "gate_\(i)"
+
+            let label = SKLabelNode(text: String(UnicodeScalar(65 + i)!)) // A-E
+            label.fontColor = .white
+            label.fontSize = 18
+            label.verticalAlignmentMode = .center
+            label.position = .zero
+            gate.addChild(label)
+
+            let pulse = SKAction.sequence([
+                SKAction.fadeAlpha(to: 1.0, duration: 0.8),
+                SKAction.fadeAlpha(to: 0.4, duration: 0.8)
+            ])
+            gate.run(.repeatForever(pulse))
+
+            worldNode.addChild(gate)
+            gates.append(gate)
+        }
     }
 
     // MARK: - 核心
@@ -332,7 +394,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         uiNode.addChild(bg)
         scoreBoardBackground = bg
 
-        let shadow = SKLabelNode(text: "玩家 0 : 0 Bot")
+        let shadow = SKLabelNode(text: "核心未被拾取")
         shadow.fontSize = 32
         shadow.fontName = "AvenirNext-Bold"
         shadow.fontColor = UIColor.black.withAlphaComponent(0.55)
@@ -341,7 +403,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         uiNode.addChild(shadow)
         scoreBoardShadow = shadow
 
-        let board = SKLabelNode(text: "玩家 0 : 0 Bot")
+        let board = SKLabelNode(text: "核心未被拾取")
         board.fontSize = 32
         board.fontName = "AvenirNext-Bold"
         board.fontColor = .white
@@ -381,7 +443,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         botTrack.addChild(botFill)
         botProgressBar = botFill
 
-        let timer = SKLabelNode(text: "01:00")
+        let timer = SKLabelNode(text: "02:00")
         timer.fontSize = 30
         timer.fontName = "AvenirNext-Bold"
         timer.fontColor = .yellow
@@ -390,7 +452,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         uiNode.addChild(timer)
         timerLabel = timer
 
-        let hint = SKLabelNode(text: "抢到核心，带回中心区！")
+        let hint = SKLabelNode(text: "靠近任意门带核心冲线，2分钟内决出胜负")
         hint.fontSize = 18
         hint.fontName = "AvenirNext-DemiBold"
         hint.fontColor = .yellow
@@ -428,13 +490,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - 触摸（更宽松：左下角区域即可启动摇杆）
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard !isMatchOver else { return }
         guard let touch = touches.first else { return }
         let loc = uiNode.convert(touch.location(in: self), from: self)
-
-        if isMatchOver {
-            _ = handleMatchEndTouch(at: loc)
-            return
-        }
 
         if let base = joystick {
             let d = hypot(loc.x - base.position.x, loc.y - base.position.y)
@@ -499,29 +557,36 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
 
-        guard isRoundActive, !isMatchOver else { return }
+        guard !isMatchOver else { return }
 
-        roundTimeRemaining = max(0, roundTimeRemaining - dt)
-        updateTimerLabel()
-
-        if roundTimeRemaining <= 0 {
-            endRound(winner: nil)
-            return
-        }
-
+        updateTimer(delta: dt)
         updatePlayerMovement()
         updateBotAI()
         checkCorePickup()
-        checkWinCondition()
+        checkFinishGates()
+        checkFinalDash(currentTime: currentTime)
+        updateCoreAutoItems(currentTime: currentTime)
+        updateUI()
         updateCameraFollow()
+    }
+
+    private func updateTimer(delta: TimeInterval) {
+        guard !isMatchOver else { return }
+        roundTimeRemaining = max(0, roundTimeRemaining - delta)
+        if roundTimeRemaining <= 0 {
+            handleTimeUp()
+        }
     }
 
     // MARK: - 你（0号玩家）移动：目标速度插值
     private func updatePlayerMovement() {
         guard let me = players.first, let body = me.physicsBody else { return }
 
-        let desired = CGVector(dx: moveDirection.dx * playerMaxSpeed,
-                              dy: moveDirection.dy * playerMaxSpeed)
+        let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == me) ? finalDashSpeedMultiplier : 1.0
+        let desiredSpeed = playerMaxSpeed * speedMultiplier
+
+        let desired = CGVector(dx: moveDirection.dx * desiredSpeed,
+                              dy: moveDirection.dy * desiredSpeed)
 
         let vx = body.velocity.dx + (desired.dx - body.velocity.dx) * accelLerp
         let vy = body.velocity.dy + (desired.dy - body.velocity.dy) * accelLerp
@@ -552,8 +617,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 dir = CGVector(dx: dx / dist, dy: dy / dist)
             }
 
-            let desired = CGVector(dx: dir.dx * botMaxSpeed,
-                                  dy: dir.dy * botMaxSpeed)
+            let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == bot) ? finalDashSpeedMultiplier : 1.0
+            let desiredSpeed = botMaxSpeed * speedMultiplier
+
+            let desired = CGVector(dx: dir.dx * desiredSpeed,
+                                  dy: dir.dy * desiredSpeed)
 
             let vx = body.velocity.dx + (desired.dx - body.velocity.dx) * botAccelLerp
             let vy = body.velocity.dy + (desired.dy - body.velocity.dy) * botAccelLerp
@@ -567,7 +635,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         for p in players {
             let d = hypot(p.position.x - c.position.x, p.position.y - c.position.y)
-            if d < 36 {
+            if d < pickupDistance {
                 pickupCore(player: p)
                 break
             }
@@ -576,45 +644,209 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private func pickupCore(player: SKShapeNode) {
         coreHolder = player
-        player.setScale(1.25)
+        coreHitCount = 0
+        finalDashTriggered = false
+        finalDashEndTime = 0
+        finalDashUsed = false
+        lastItemGiveTime = 0
 
-        let glow = SKShapeNode(circleOfRadius: 32)
-        glow.strokeColor = .yellow
-        glow.lineWidth = 3
-        glow.glowWidth = 10
-        glow.fillColor = .clear
-        glow.name = "glow"
-        glow.zPosition = 200
-        player.addChild(glow)
+        player.setScale(1.0)
+        player.childNode(withName: "glow")?.removeFromParent()
 
-        let text = (player == players.first) ? "你拿到了核心！" : "Bot拿到了核心！"
-        showMessage(text, color: (player == players.first) ? .green : .red)
+        core?.isHidden = true
+        attachCoreArrow(to: player)
+
+        let holderIndex = players.firstIndex(of: player) ?? 0
+        let text = (holderIndex == 0) ? "你拿到核心！" : "Bot\(holderIndex)拿到核心！"
+        showMessage(text, color: (holderIndex == 0) ? .green : .red)
     }
 
     private func dropCore(from player: SKShapeNode) {
         guard let c = core else { return }
 
         coreHolder = nil
+        coreHitCount = 0
+        finalDashTriggered = false
+        finalDashEndTime = 0
+        finalDashUsed = false
+
         player.setScale(1.0)
         player.childNode(withName: "glow")?.removeFromParent()
+        removeCoreArrow()
+        removeFinalDashEffect(from: player)
 
         let angle = CGFloat.random(in: 0...(2 * .pi))
-        let dist: CGFloat = 90
-        c.position = CGPoint(x: player.position.x + cos(angle) * dist,
-                            y: player.position.y + sin(angle) * dist)
+        c.position = CGPoint(x: player.position.x + cos(angle) * dropDistance,
+                            y: player.position.y + sin(angle) * dropDistance)
+        c.isHidden = false
 
         showMessage("核心掉落！", color: .orange)
     }
 
-    // MARK: - 胜利条件：持核进入中心区立刻得分
-    private func checkWinCondition() {
+    private func attachCoreArrow(to holder: SKShapeNode) {
+        removeCoreArrow()
+        let arrowPath = CGMutablePath()
+        arrowPath.move(to: CGPoint(x: -22, y: 60))
+        arrowPath.addLine(to: CGPoint(x: 22, y: 60))
+        arrowPath.addLine(to: CGPoint(x: 0, y: 110))
+        arrowPath.closeSubpath()
+
+        let arrow = SKShapeNode(path: arrowPath)
+        arrow.fillColor = .red
+        arrow.strokeColor = .white
+        arrow.lineWidth = 3
+        arrow.zPosition = 500
+        arrow.name = "coreArrow"
+
+        holder.addChild(arrow)
+        coreArrow = arrow
+    }
+
+    private func removeCoreArrow() {
+        coreArrow?.removeFromParent()
+        coreArrow = nil
+    }
+
+    private func addFinalDashEffect(to holder: SKShapeNode) {
+        removeFinalDashEffect(from: holder)
+        let glow = SKShapeNode(circleOfRadius: 34)
+        glow.strokeColor = .yellow
+        glow.lineWidth = 4
+        glow.glowWidth = 12
+        glow.fillColor = .clear
+        glow.name = "finalDashGlow"
+        glow.zPosition = 400
+
+        let pulse = SKAction.sequence([
+            SKAction.scale(to: 1.1, duration: 0.4),
+            SKAction.scale(to: 1.0, duration: 0.4)
+        ])
+        glow.run(.repeatForever(pulse))
+        holder.addChild(glow)
+    }
+
+    private func removeFinalDashEffect(from holder: SKShapeNode) {
+        holder.childNode(withName: "finalDashGlow")?.removeFromParent()
+    }
+
+    // MARK: - 终点门胜利
+    private func checkFinishGates() {
         guard let holder = coreHolder else { return }
-        let center = worldCenter
-        let d = hypot(holder.position.x - center.x, holder.position.y - center.y)
-        if d < centerZoneRadius {
-            let team: Team = (holder == players.first) ? .player : .bot
-            endRound(winner: team)
+        for gate in gates {
+            let d = hypot(holder.position.x - gate.position.x, holder.position.y - gate.position.y)
+            if d < gateWinDistance {
+                gameOver(winner: holder)
+                break
+            }
         }
+    }
+
+    // MARK: - 破门冲刺
+    private func checkFinalDash(currentTime: TimeInterval) {
+        guard let holder = coreHolder else { return }
+
+        if finalDashTriggered {
+            if currentTime >= finalDashEndTime {
+                finalDashTriggered = false
+                finalDashEndTime = 0
+                removeFinalDashEffect(from: holder)
+            }
+            return
+        }
+
+        if finalDashUsed { return }
+
+        for gate in gates {
+            let d = hypot(holder.position.x - gate.position.x, holder.position.y - gate.position.y)
+            if d < finalDashTriggerDistance {
+                finalDashTriggered = true
+                finalDashUsed = true
+                finalDashEndTime = currentTime + finalDashDuration
+                addFinalDashEffect(to: holder)
+                if holder == players.first {
+                    showMessage("破门冲刺！", color: .yellow)
+                }
+                break
+            }
+        }
+    }
+
+    // MARK: - 核心自动道具
+    private func updateCoreAutoItems(currentTime: TimeInterval) {
+        guard let holder = coreHolder else { return }
+        let holderIndex = players.firstIndex(of: holder) ?? 0
+        if playerItems[holderIndex].count >= maxItemsPerPlayer { return }
+
+        if lastItemGiveTime == 0 {
+            lastItemGiveTime = currentTime
+            return
+        }
+
+        if currentTime - lastItemGiveTime >= itemInterval {
+            lastItemGiveTime = currentTime
+            let items = ["banana", "bomb", "dash"]
+            if let randomItem = items.randomElement() {
+                playerItems[holderIndex].append(randomItem)
+                if holderIndex == 0 {
+                    showMessage("核心奖励：\(randomItem)", color: .yellow)
+                }
+            }
+        }
+    }
+
+    // MARK: - 时间到
+    private func handleTimeUp() {
+        guard !isMatchOver else { return }
+        if let holder = coreHolder {
+            gameOver(winner: holder)
+        } else {
+            showMessage("时间到！无人获胜", color: .yellow)
+            run(.sequence([
+                .wait(forDuration: 3.0),
+                .run { [weak self] in self?.restartGame() }
+            ]))
+            isMatchOver = true
+        }
+    }
+
+    // MARK: - 结束与重启
+    private func gameOver(winner: SKShapeNode) {
+        guard !isMatchOver else { return }
+        isMatchOver = true
+
+        let idx = players.firstIndex(of: winner) ?? -1
+        let text: String
+        let color: UIColor
+        if idx == 0 {
+            text = "🎉 你赢了！"
+            color = .green
+        } else {
+            text = "😭 Bot\(idx)赢了"
+            color = .red
+        }
+
+        let label = SKLabelNode(text: text)
+        label.fontSize = 60
+        label.fontColor = color
+        label.position = cameraNode.position
+        label.zPosition = 1000
+        uiNode.addChild(label)
+
+        label.setScale(0.2)
+        label.run(.sequence([
+            .scale(to: 1.0, duration: 0.3),
+            .wait(forDuration: 2.7),
+            .removeFromParent()
+        ]))
+
+        run(.sequence([
+            .wait(forDuration: 3.0),
+            .run { [weak self] in self?.restartGame() }
+        ]))
+    }
+
+    private func restartGame() {
+        startRound()
     }
 
     // MARK: - 碰撞：只允许“玩家撞玩家”导致掉核
@@ -631,64 +863,40 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let holderHit = (nodeA == holder || nodeB == holder)
         guard holderHit else { return }
 
+        guard !finalDashTriggered else { return } // 冲刺期间无敌
+
         if contact.collisionImpulse > dropImpulseThreshold {
-            dropCore(from: holder)
+            coreHitCount += 1
+            let displayCount = min(coreHitCount, dropHitsRequired)
+            showMessage("核心被打中！(\(displayCount)/\(dropHitsRequired))", color: .orange)
+            if coreHitCount >= dropHitsRequired {
+                dropCore(from: holder)
+            }
         }
     }
 
-    // MARK: - 回合流程
+    // MARK: - 匹配流程
     private func startRound() {
-        guard !isMatchOver else { return }
-
-        roundIndex += 1
-        isRoundActive = true
-        roundTimeRemaining = roundDuration
+        isMatchOver = false
+        roundTimeRemaining = gameTimeLimit
         lastUpdateTime = 0
+        coreHitCount = 0
+        coreHolder = nil
+        coreArrow = nil
+        finalDashTriggered = false
+        finalDashEndTime = 0
+        playerItems = Array(repeating: [], count: 8)
+        lastItemGiveTime = 0
 
         resetEntitiesForRound()
         updateTimerLabel()
         updateScoreBoard()
         focusCameraInstantly()
-
-        showMessage("第\(roundIndex)回合开始", color: .cyan)
-    }
-
-    private func endRound(winner: Team?) {
-        guard isRoundActive else { return }
-        isRoundActive = false
-
-        if let w = winner {
-            switch w {
-            case .player:
-                playerScore += 1
-                showMessage("玩家得分！", color: .green)
-            case .bot:
-                botScore += 1
-                showMessage("Bot得分！", color: .red)
-            }
-        } else {
-            showMessage("时间到，回合重置", color: .yellow)
-        }
-
-        updateScoreBoard()
-
-        if playerScore >= targetScore || botScore >= targetScore {
-            isMatchOver = true
-            let finalText = (playerScore >= targetScore) ? "🎉 玩家阵营胜利！" : "🤖 Bot阵营胜利！"
-            showMessage(finalText, color: (playerScore >= targetScore) ? .green : .red)
-            showMatchEndOverlay()
-            return
-        }
-
-        // 2秒后下一回合（这2秒他们会停住，这是正常的）
-        run(.sequence([
-            .wait(forDuration: 2.0),
-            .run { [weak self] in self?.startRound() }
-        ]))
     }
 
     private func resetEntitiesForRound() {
         coreHolder = nil
+        removeCoreArrow()
 
         if let c = core {
             c.removeAllActions()
@@ -698,6 +906,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             if c.parent == nil { worldNode.addChild(c) }
             c.zPosition = 20
             c.zRotation = .pi / 4
+            c.isHidden = false
             c.run(.repeatForever(.rotate(byAngle: .pi * 2, duration: 2.0)))
         }
 
@@ -705,6 +914,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             if idx < spawnPositions.count { p.position = spawnPositions[idx] }
             p.setScale(1.0)
             p.childNode(withName: "glow")?.removeFromParent()
+            p.childNode(withName: "finalDashGlow")?.removeFromParent()
             if let body = p.physicsBody {
                 body.velocity = .zero
                 body.angularVelocity = 0
@@ -714,16 +924,19 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - UI helpers
     private func updateScoreBoard() {
-        let text = "玩家 \(playerScore) : \(botScore) Bot"
-        scoreBoardLabel?.text = text
-        scoreBoardShadow?.text = text
+        let holderName: String
+        if let holder = coreHolder, let idx = players.firstIndex(of: holder) {
+            if idx == 0 {
+                holderName = "你持有核心 (被打\(coreHitCount)/\(dropHitsRequired)次)"
+            } else {
+                holderName = "Bot\(idx)持有核心 (被打\(coreHitCount)/\(dropHitsRequired)次)"
+            }
+        } else {
+            holderName = "核心未被拾取"
+        }
 
-        let playerRatio = CGFloat(playerScore) / CGFloat(max(targetScore, 1))
-        let botRatio = CGFloat(botScore) / CGFloat(max(targetScore, 1))
-        playerProgressBar?.xScale = max(0.0, min(1.0, playerRatio))
-        botProgressBar?.xScale = max(0.0, min(1.0, botRatio))
-
-        animateScoreBoardChange()
+        scoreBoardLabel?.text = holderName
+        scoreBoardShadow?.text = holderName
     }
 
     private func updateTimerLabel() {
@@ -732,122 +945,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         timerLabel?.text = String(format: "%02d:%02d", minutes, seconds)
     }
 
-    private func animateScoreBoardChange() {
-        let pulse = SKAction.sequence([
-            .scale(to: 1.12, duration: 0.08),
-            .scale(to: 1.0, duration: 0.14)
-        ])
-
-        if let label = scoreBoardLabel {
-            label.removeAction(forKey: "scorePulse")
-            label.run(pulse, withKey: "scorePulse")
-        }
-
-        if let shadow = scoreBoardShadow, let copy = pulse.copy() as? SKAction {
-            shadow.removeAction(forKey: "scorePulse")
-            shadow.run(copy, withKey: "scorePulse")
-        }
-
-        if let bg = scoreBoardBackground {
-            bg.removeAction(forKey: "scoreFlash")
-            let originalColor = bg.fillColor
-            let flash = SKAction.sequence([
-                .run { bg.fillColor = UIColor(red: 0.18, green: 0.4, blue: 0.7, alpha: 0.92) },
-                .wait(forDuration: 0.16),
-                .run { bg.fillColor = originalColor }
-            ])
-            bg.run(flash, withKey: "scoreFlash")
-        }
-    }
-
-    private func showMatchEndOverlay() {
-        matchEndOverlay?.removeFromParent()
-
-        let overlay = SKNode()
-        overlay.zPosition = 1200
-        overlay.name = "matchEndOverlay"
-        overlay.alpha = 0.0
-
-        let panel = SKShapeNode(rectOf: CGSize(width: size.width * 0.78, height: 190), cornerRadius: 18)
-        panel.fillColor = UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 0.86)
-        panel.strokeColor = UIColor.white.withAlphaComponent(0.9)
-        panel.lineWidth = 3
-        panel.zPosition = 0
-        overlay.addChild(panel)
-
-        let title = SKLabelNode(text: "比赛结束")
-        title.fontName = "AvenirNext-Heavy"
-        title.fontSize = 34
-        title.fontColor = .white
-        title.position = CGPoint(x: 0, y: 42)
-        title.zPosition = 1
-        overlay.addChild(title)
-
-        let subtitle = SKLabelNode(text: "再来一局？")
-        subtitle.fontName = "AvenirNext-DemiBold"
-        subtitle.fontSize = 22
-        subtitle.fontColor = UIColor.white.withAlphaComponent(0.85)
-        subtitle.position = CGPoint(x: 0, y: 12)
-        subtitle.zPosition = 1
-        overlay.addChild(subtitle)
-
-        let button = SKShapeNode(rectOf: CGSize(width: 220, height: 66), cornerRadius: 14)
-        button.name = "restartButton"
-        button.fillColor = UIColor(red: 0.2, green: 0.8, blue: 0.45, alpha: 0.95)
-        button.strokeColor = UIColor.white
-        button.lineWidth = 2
-        button.position = CGPoint(x: 0, y: -44)
-        button.zPosition = 1
-        overlay.addChild(button)
-
-        let buttonLabel = SKLabelNode(text: "再来一局")
-        buttonLabel.fontName = "AvenirNext-Bold"
-        buttonLabel.fontSize = 26
-        buttonLabel.fontColor = .white
-        buttonLabel.verticalAlignmentMode = .center
-        buttonLabel.zPosition = 2
-        button.addChild(buttonLabel)
-
-        overlay.position = CGPoint(x: 0, y: 0)
-        overlay.setScale(0.88)
-        uiNode.addChild(overlay)
-        matchEndOverlay = overlay
-
-        overlay.run(.group([
-            .fadeIn(withDuration: 0.2),
-            .scale(to: 1.0, duration: 0.2)
-        ]))
-    }
-
-    private func resetMatch() {
-        isMatchOver = false
-        isRoundActive = false
-        playerScore = 0
-        botScore = 0
-        roundIndex = 0
-        roundTimeRemaining = roundDuration
-        matchEndOverlay?.removeFromParent()
-        matchEndOverlay = nil
-        updateScoreBoard()
+    private func updateUI() {
         updateTimerLabel()
-        startRound()
+        updateScoreBoard()
     }
 
-    @discardableResult
-    private func handleMatchEndTouch(at point: CGPoint) -> Bool {
-        let nodesHit = uiNode.nodes(at: point)
-        for node in nodesHit {
-            if node.name == "restartButton" || node.parent?.name == "restartButton" {
-                matchEndOverlay?.run(.sequence([
-                    .scale(to: 1.04, duration: 0.08),
-                    .scale(to: 1.0, duration: 0.08)
-                ]))
-                resetMatch()
-                return true
-            }
-        }
-        return false
-    }
 
     private func showMessage(_ text: String, color: UIColor) {
         let label = SKLabelNode(text: text)
