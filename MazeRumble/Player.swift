@@ -27,9 +27,9 @@ final class Player: SKShapeNode {
         physicsBody?.linearDamping = 2.2
         physicsBody?.allowsRotation = false
 
-        physicsBody?.categoryBitMask = GameScene.PhysicsCategory.player
-        physicsBody?.collisionBitMask = GameScene.PhysicsCategory.player | GameScene.PhysicsCategory.wall
-        physicsBody?.contactTestBitMask = GameScene.PhysicsCategory.player
+        physicsBody?.categoryBitMask = PhysicsCategory.player
+        physicsBody?.collisionBitMask = PhysicsCategory.player | PhysicsCategory.wall
+        physicsBody?.contactTestBitMask = PhysicsCategory.player
 
         if isMainPlayer {
             addMainPlayerIndicators()

@@ -15,17 +15,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         case bot
     }
 
-    // MARK: - Physics Category
-    struct PhysicsCategory {
-        static let player: UInt32 = 1 << 0
-        static let wall: UInt32   = 1 << 1
-    }
-
     // MARK: - 游戏对象
-    private var players: [Player] = []          // 8个玩家（0号是你）
+    private var players: [Player] = []               // 8个玩家（0号是你）
     private var spawnPositions: [CGPoint] = []       // 出生点
     private var core: SKShapeNode?                   // 核心物品
-    private var coreHolder: SKShapeNode?             // 谁拿着核心
+    private var coreHolder: Player?                  // 谁拿着核心
     private var coreHitCount = 0
     private var coreArrow: SKShapeNode?
 
@@ -553,7 +547,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
-    private func pickupCore(player: SKShapeNode) {
+    private func pickupCore(player: Player) {
         coreHolder = player
         coreHitCount = 0
         finalDashTriggered = false
@@ -572,7 +566,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         showMessage(text, color: (holderIndex == 0) ? .green : .red)
     }
 
-    private func dropCore(from player: SKShapeNode) {
+    private func dropCore(from player: Player) {
         guard let c = core else { return }
 
         coreHolder = nil
@@ -594,7 +588,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         showMessage("核心掉落！", color: .orange)
     }
 
-    private func attachCoreArrow(to holder: SKShapeNode) {
+    private func attachCoreArrow(to holder: Player) {
         removeCoreArrow()
         let arrowPath = CGMutablePath()
         arrowPath.move(to: CGPoint(x: -22, y: 60))
@@ -618,7 +612,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         coreArrow = nil
     }
 
-    private func addFinalDashEffect(to holder: SKShapeNode) {
+    private func addFinalDashEffect(to holder: Player) {
         removeFinalDashEffect(from: holder)
         let glow = SKShapeNode(circleOfRadius: 34)
         glow.strokeColor = .yellow
@@ -636,7 +630,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         holder.addChild(glow)
     }
 
-    private func removeFinalDashEffect(from holder: SKShapeNode) {
+    private func removeFinalDashEffect(from holder: Player) {
         holder.childNode(withName: "finalDashGlow")?.removeFromParent()
     }
 
@@ -721,7 +715,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // MARK: - 结束与重启
-    private func gameOver(winner: SKShapeNode) {
+    private func gameOver(winner: Player) {
         guard !isMatchOver else { return }
         isMatchOver = true
 
@@ -764,12 +758,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     func didBegin(_ contact: SKPhysicsContact) {
         guard let holder = coreHolder else { return }
 
-        guard let nodeA = contact.bodyA.node as? SKShapeNode,
-              let nodeB = contact.bodyB.node as? SKShapeNode else { return }
-
-        let isPlayerA = nodeA.name?.hasPrefix("player_") == true
-        let isPlayerB = nodeB.name?.hasPrefix("player_") == true
-        guard isPlayerA, isPlayerB else { return }
+        guard let nodeA = contact.bodyA.node as? Player,
+              let nodeB = contact.bodyB.node as? Player else { return }
 
         let holderHit = (nodeA == holder || nodeB == holder)
         guard holderHit else { return }
