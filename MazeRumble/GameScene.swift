@@ -21,26 +21,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         static let wall: UInt32   = 1 << 1
     }
 
-    // MARK: - 参数（集中调节）
-    private let pickupDistance: CGFloat = 40
-    private let dropHitsRequired = 3
-    private let dropDistance: CGFloat = 80
-
-    private let itemInterval: TimeInterval = 8
-    private let maxItemsPerPlayer = 3
-
-    private let finalDashTriggerDistance: CGFloat = 100
-    private let finalDashDuration: TimeInterval = 5
-    private let finalDashSpeedMultiplier: CGFloat = 1.5
-
-    private let gateCount = 5
-    private let gateWinDistance: CGFloat = 50
-    private let gateSize = CGSize(width: 40, height: 80)
-
-    private let gameTimeLimit: TimeInterval = 120
-
     // MARK: - 游戏对象
-    private var players: [SKShapeNode] = []          // 8个玩家（0号是你）
+    private var players: [Player] = []          // 8个玩家（0号是你）
     private var spawnPositions: [CGPoint] = []       // 出生点
     private var core: SKShapeNode?                   // 核心物品
     private var coreHolder: SKShapeNode?             // 谁拿着核心
@@ -76,38 +58,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var timerLabel: SKLabelNode?
     private var hintLabel: SKLabelNode?
 
-    private var roundTimeRemaining: TimeInterval = 120
+    private var roundTimeRemaining: TimeInterval = GameConfig.gameTimeLimit
     private var lastUpdateTime: TimeInterval = 0
 
     // MARK: - 游戏状态
     private var isMatchOver = false
 
-    // MARK: - 参数（易调）
-    private let centerZoneRadius: CGFloat = 100
-
-    private let joystickBaseRadius: CGFloat = 70
-    private let joystickKnobRadius: CGFloat = 35
-    private let joystickTouchRadius: CGFloat = 260          // 左下角允许触摸区域半径（更宽松）
-    private let joystickDeadZone: CGFloat = 10              // 摇杆死区
-
-    private let scoreBackgroundSize = CGSize(width: 320, height: 64)
-    private let progressBarWidth: CGFloat = 150
-    private let progressBarHeight: CGFloat = 12
-
-    private let playerMaxSpeed: CGFloat = 300               // 你最大速度（基础速率，最终会乘以加成）
-    private let botMaxSpeed: CGFloat = 220                  // Bot 最大速度（基础速率）
-    private let accelLerp: CGFloat = 0.25                   // 速度插值系数（越大越跟手，0.15~0.30）
-    private let botAccelLerp: CGFloat = 0.18
-
-    private let dropImpulseThreshold: CGFloat = 50          // 撞击阈值：超过才掉核（只对玩家撞玩家生效）
-
     // MARK: - 世界 / 相机
-    private let worldScaleFactor: CGFloat = 3.0
     private var worldSize: CGSize = .zero
     private let worldNode = SKNode()
     private let uiNode = SKNode()
     private let cameraNode = SKCameraNode()
-    private let cameraLerp: CGFloat = 0.18
 
     // MARK: - 初始化场景
     override func didMove(to view: SKView) {
@@ -116,8 +77,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         physicsWorld.contactDelegate = self
         physicsWorld.gravity = .zero
 
-        worldSize = CGSize(width: size.width * worldScaleFactor,
-                           height: size.height * worldScaleFactor)
+        worldSize = CGSize(width: size.width * GameConfig.worldScaleFactor,
+                           height: size.height * GameConfig.worldScaleFactor)
 
         addChild(worldNode)
         addChild(cameraNode)
@@ -199,7 +160,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func createCenterZone() {
         let center = worldCenter
 
-        let zone = SKShapeNode(circleOfRadius: centerZoneRadius)
+        let zone = SKShapeNode(circleOfRadius: GameConfig.centerZoneRadius)
         zone.fillColor = .yellow
         zone.strokeColor = .orange
         zone.lineWidth = 4
@@ -230,14 +191,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         let usableWidth = worldSize.width * 0.8
         let startX = (worldSize.width - usableWidth) / 2
-        let y = worldSize.height - gateSize.height
+        let y = worldSize.height - GameConfig.gateSize.height
 
-        for i in 0..<gateCount {
-            let gate = SKShapeNode(rectOf: gateSize, cornerRadius: 6)
+        for i in 0..<GameConfig.gateCount {
+            let gate = SKShapeNode(rectOf: GameConfig.gateSize, cornerRadius: 6)
             gate.fillColor = SKColor.green.withAlphaComponent(0.5)
             gate.strokeColor = SKColor.green
             gate.lineWidth = 3
-            let x = startX + CGFloat(i) * (usableWidth / CGFloat(gateCount - 1))
+            let x = startX + CGFloat(i) * (usableWidth / CGFloat(GameConfig.gateCount - 1))
             gate.position = CGPoint(x: x, y: y)
             gate.zPosition = 3
             gate.name = "gate_\(i)"
@@ -306,67 +267,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let spawn = CGPoint(x: x, y: y)
             spawnPositions.append(spawn)
 
-            let p = SKShapeNode(circleOfRadius: 20)
-            p.fillColor = colors[i]
-            p.strokeColor = .black
-            p.lineWidth = 2
-            p.position = spawn
-            p.zPosition = 10
-            p.name = "player_\(i)"
+            let player = Player(index: i, color: colors[i], isMainPlayer: i == 0)
+            player.position = spawn
 
-            p.physicsBody = SKPhysicsBody(circleOfRadius: 20)
-            p.physicsBody?.isDynamic = true
-            p.physicsBody?.mass = 1.0
-            p.physicsBody?.friction = 0.2
-            p.physicsBody?.restitution = 0.35
-            p.physicsBody?.linearDamping = 2.2
-            p.physicsBody?.allowsRotation = false
-
-            p.physicsBody?.categoryBitMask = PhysicsCategory.player
-            p.physicsBody?.collisionBitMask = PhysicsCategory.player | PhysicsCategory.wall
-            p.physicsBody?.contactTestBitMask = PhysicsCategory.player   // 只关心玩家撞玩家（用于掉核判断）
-
-            worldNode.addChild(p)
-            players.append(p)
-        }
-
-        // ✅ 0号玩家是你：加 “YOU” + 光环
-        if let me = players.first {
-            let ring = SKShapeNode(circleOfRadius: 26)
-            ring.strokeColor = .white
-            ring.lineWidth = 4
-            ring.glowWidth = 4
-            ring.fillColor = .clear
-            ring.zPosition = 100
-            ring.name = "youRing"
-            me.addChild(ring)
-
-            let you = SKLabelNode(text: "YOU")
-            you.fontSize = 14
-            you.fontColor = .white
-            you.position = CGPoint(x: 0, y: 34)
-            you.zPosition = 101
-            you.name = "youLabel"
-            me.addChild(you)
-
-            let arrowPath = CGMutablePath()
-            arrowPath.move(to: CGPoint(x: -10, y: 46))
-            arrowPath.addLine(to: CGPoint(x: 10, y: 46))
-            arrowPath.addLine(to: CGPoint(x: 0, y: 70))
-            arrowPath.closeSubpath()
-            let arrow = SKShapeNode(path: arrowPath)
-            arrow.fillColor = .white
-            arrow.strokeColor = .black
-            arrow.lineWidth = 2
-            arrow.zPosition = 102
-            arrow.name = "youArrow"
-            me.addChild(arrow)
+            worldNode.addChild(player)
+            players.append(player)
         }
     }
 
     // MARK: - 虚拟摇杆
     private func createJoystick() {
-        let base = SKShapeNode(circleOfRadius: joystickBaseRadius)
+        let base = SKShapeNode(circleOfRadius: GameConfig.joystickBaseRadius)
         base.fillColor = SKColor.gray.withAlphaComponent(0.35)
         base.strokeColor = .white
         base.lineWidth = 2
@@ -374,7 +285,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         uiNode.addChild(base)
         joystick = base
 
-        let knob = SKShapeNode(circleOfRadius: joystickKnobRadius)
+        let knob = SKShapeNode(circleOfRadius: GameConfig.joystickKnobRadius)
         knob.fillColor = SKColor.white.withAlphaComponent(0.65)
         knob.strokeColor = .black
         knob.lineWidth = 2
@@ -385,7 +296,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - UI
     private func createUI() {
-        let bg = SKShapeNode(rectOf: scoreBackgroundSize, cornerRadius: 18)
+        let bg = SKShapeNode(rectOf: GameConfig.scoreBackgroundSize, cornerRadius: 18)
         bg.fillColor = UIColor(red: 0.05, green: 0.08, blue: 0.12, alpha: 0.78)
         bg.strokeColor = UIColor.white.withAlphaComponent(0.85)
         bg.lineWidth = 2.5
@@ -413,7 +324,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         uiNode.addChild(board)
         scoreBoardLabel = board
 
-        let playerTrack = SKShapeNode(rectOf: CGSize(width: progressBarWidth, height: progressBarHeight), cornerRadius: progressBarHeight / 2)
+        let playerTrack = SKShapeNode(rectOf: CGSize(width: GameConfig.progressBarWidth, height: GameConfig.progressBarHeight), cornerRadius: GameConfig.progressBarHeight / 2)
         playerTrack.fillColor = UIColor.white.withAlphaComponent(0.12)
         playerTrack.strokeColor = UIColor.white.withAlphaComponent(0.35)
         playerTrack.lineWidth = 1.5
@@ -422,13 +333,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         playerProgressTrack = playerTrack
 
         let playerFill = SKSpriteNode(color: UIColor(red: 0.15, green: 0.85, blue: 0.35, alpha: 0.9),
-                                      size: CGSize(width: progressBarWidth, height: progressBarHeight))
+                                      size: CGSize(width: GameConfig.progressBarWidth, height: GameConfig.progressBarHeight))
         playerFill.anchorPoint = CGPoint(x: 0.0, y: 0.5)
         playerFill.zPosition = 300
         playerTrack.addChild(playerFill)
         playerProgressBar = playerFill
 
-        let botTrack = SKShapeNode(rectOf: CGSize(width: progressBarWidth, height: progressBarHeight), cornerRadius: progressBarHeight / 2)
+        let botTrack = SKShapeNode(rectOf: CGSize(width: GameConfig.progressBarWidth, height: GameConfig.progressBarHeight), cornerRadius: GameConfig.progressBarHeight / 2)
         botTrack.fillColor = UIColor.white.withAlphaComponent(0.12)
         botTrack.strokeColor = UIColor.white.withAlphaComponent(0.35)
         botTrack.lineWidth = 1.5
@@ -437,7 +348,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         botProgressTrack = botTrack
 
         let botFill = SKSpriteNode(color: UIColor(red: 0.9, green: 0.25, blue: 0.35, alpha: 0.9),
-                                   size: CGSize(width: progressBarWidth, height: progressBarHeight))
+                                   size: CGSize(width: GameConfig.progressBarWidth, height: GameConfig.progressBarHeight))
         botFill.anchorPoint = CGPoint(x: 1.0, y: 0.5)
         botFill.zPosition = 300
         botTrack.addChild(botFill)
@@ -479,10 +390,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         scoreBoardLabel?.position = scorePos
 
         let barY = scoreY - 22
-        playerProgressTrack?.position = CGPoint(x: -scoreBackgroundSize.width / 2 + progressBarWidth / 2 + 14, y: barY)
-        botProgressTrack?.position = CGPoint(x: scoreBackgroundSize.width / 2 - progressBarWidth / 2 - 14, y: barY)
-        playerProgressBar?.position = CGPoint(x: -progressBarWidth / 2, y: 0)
-        botProgressBar?.position = CGPoint(x: progressBarWidth / 2, y: 0)
+        playerProgressTrack?.position = CGPoint(x: -GameConfig.scoreBackgroundSize.width / 2 + GameConfig.progressBarWidth / 2 + 14, y: barY)
+        botProgressTrack?.position = CGPoint(x: GameConfig.scoreBackgroundSize.width / 2 - GameConfig.progressBarWidth / 2 - 14, y: barY)
+        playerProgressBar?.position = CGPoint(x: -GameConfig.progressBarWidth / 2, y: 0)
+        botProgressBar?.position = CGPoint(x: GameConfig.progressBarWidth / 2, y: 0)
 
         timerLabel?.position = CGPoint(x: 0, y: scoreY - 54)
         hintLabel?.position = CGPoint(x: 0, y: scoreY - 88)
@@ -496,7 +407,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         if let base = joystick {
             let d = hypot(loc.x - base.position.x, loc.y - base.position.y)
-            if d <= joystickTouchRadius || (loc.x < 0 && loc.y < 0) {
+            if d <= GameConfig.joystickTouchRadius || (loc.x < 0 && loc.y < 0) {
                 isTouching = true
                 updateJoystick(with: loc)
             }
@@ -526,7 +437,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let dy = location.y - base.position.y
         let dist = hypot(dx, dy)
 
-        let maxDist = joystickBaseRadius
+        let maxDist = GameConfig.joystickBaseRadius
 
         if dist <= maxDist {
             knob.position = location
@@ -536,7 +447,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                                    y: base.position.y + sin(a) * maxDist)
         }
 
-        if dist < joystickDeadZone {
+        if dist < GameConfig.joystickDeadZone {
             moveDirection = .zero
         } else {
             let nx = dx / max(dist, 0.0001)
@@ -582,14 +493,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func updatePlayerMovement() {
         guard let me = players.first, let body = me.physicsBody else { return }
 
-        let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == me) ? finalDashSpeedMultiplier : 1.0
-        let desiredSpeed = playerMaxSpeed * speedMultiplier
+        let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == me) ? GameConfig.finalDashSpeedMultiplier : 1.0
+        let desiredSpeed = GameConfig.playerMaxSpeed * speedMultiplier
 
         let desired = CGVector(dx: moveDirection.dx * desiredSpeed,
                               dy: moveDirection.dy * desiredSpeed)
 
-        let vx = body.velocity.dx + (desired.dx - body.velocity.dx) * accelLerp
-        let vy = body.velocity.dy + (desired.dy - body.velocity.dy) * accelLerp
+        let vx = body.velocity.dx + (desired.dx - body.velocity.dx) * GameConfig.accelLerp
+        let vy = body.velocity.dy + (desired.dy - body.velocity.dy) * GameConfig.accelLerp
         body.velocity = CGVector(dx: vx, dy: vy)
     }
 
@@ -617,14 +528,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 dir = CGVector(dx: dx / dist, dy: dy / dist)
             }
 
-            let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == bot) ? finalDashSpeedMultiplier : 1.0
-            let desiredSpeed = botMaxSpeed * speedMultiplier
+            let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == bot) ? GameConfig.finalDashSpeedMultiplier : 1.0
+            let desiredSpeed = GameConfig.botMaxSpeed * speedMultiplier
 
             let desired = CGVector(dx: dir.dx * desiredSpeed,
                                   dy: dir.dy * desiredSpeed)
 
-            let vx = body.velocity.dx + (desired.dx - body.velocity.dx) * botAccelLerp
-            let vy = body.velocity.dy + (desired.dy - body.velocity.dy) * botAccelLerp
+            let vx = body.velocity.dx + (desired.dx - body.velocity.dx) * GameConfig.botAccelLerp
+            let vy = body.velocity.dy + (desired.dy - body.velocity.dy) * GameConfig.botAccelLerp
             body.velocity = CGVector(dx: vx, dy: vy)
         }
     }
@@ -635,7 +546,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         for p in players {
             let d = hypot(p.position.x - c.position.x, p.position.y - c.position.y)
-            if d < pickupDistance {
+            if d < GameConfig.pickupDistance {
                 pickupCore(player: p)
                 break
             }
@@ -676,8 +587,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         removeFinalDashEffect(from: player)
 
         let angle = CGFloat.random(in: 0...(2 * .pi))
-        c.position = CGPoint(x: player.position.x + cos(angle) * dropDistance,
-                            y: player.position.y + sin(angle) * dropDistance)
+        c.position = CGPoint(x: player.position.x + cos(angle) * GameConfig.dropDistance,
+                            y: player.position.y + sin(angle) * GameConfig.dropDistance)
         c.isHidden = false
 
         showMessage("核心掉落！", color: .orange)
@@ -734,7 +645,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let holder = coreHolder else { return }
         for gate in gates {
             let d = hypot(holder.position.x - gate.position.x, holder.position.y - gate.position.y)
-            if d < gateWinDistance {
+            if d < GameConfig.gateWinDistance {
                 gameOver(winner: holder)
                 break
             }
@@ -758,10 +669,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         for gate in gates {
             let d = hypot(holder.position.x - gate.position.x, holder.position.y - gate.position.y)
-            if d < finalDashTriggerDistance {
+            if d < GameConfig.finalDashTriggerDistance {
                 finalDashTriggered = true
                 finalDashUsed = true
-                finalDashEndTime = currentTime + finalDashDuration
+                finalDashEndTime = currentTime + GameConfig.finalDashDuration
                 addFinalDashEffect(to: holder)
                 if holder == players.first {
                     showMessage("破门冲刺！", color: .yellow)
@@ -775,14 +686,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func updateCoreAutoItems(currentTime: TimeInterval) {
         guard let holder = coreHolder else { return }
         let holderIndex = players.firstIndex(of: holder) ?? 0
-        if playerItems[holderIndex].count >= maxItemsPerPlayer { return }
+        if playerItems[holderIndex].count >= GameConfig.maxItemsPerPlayer { return }
 
         if lastItemGiveTime == 0 {
             lastItemGiveTime = currentTime
             return
         }
 
-        if currentTime - lastItemGiveTime >= itemInterval {
+        if currentTime - lastItemGiveTime >= GameConfig.itemInterval {
             lastItemGiveTime = currentTime
             let items = ["banana", "bomb", "dash"]
             if let randomItem = items.randomElement() {
@@ -865,11 +776,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         guard !finalDashTriggered else { return } // 冲刺期间无敌
 
-        if contact.collisionImpulse > dropImpulseThreshold {
+        if contact.collisionImpulse > GameConfig.dropImpulseThreshold {
             coreHitCount += 1
-            let displayCount = min(coreHitCount, dropHitsRequired)
-            showMessage("核心被打中！(\(displayCount)/\(dropHitsRequired))", color: .orange)
-            if coreHitCount >= dropHitsRequired {
+            let displayCount = min(coreHitCount, GameConfig.dropHitsRequired)
+            showMessage("核心被打中！(\(displayCount)/\(GameConfig.dropHitsRequired))", color: .orange)
+            if coreHitCount >= GameConfig.dropHitsRequired {
                 dropCore(from: holder)
             }
         }
@@ -878,7 +789,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - 匹配流程
     private func startRound() {
         isMatchOver = false
-        roundTimeRemaining = gameTimeLimit
+        roundTimeRemaining = GameConfig.gameTimeLimit
         lastUpdateTime = 0
         coreHitCount = 0
         coreHolder = nil
@@ -927,9 +838,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let holderName: String
         if let holder = coreHolder, let idx = players.firstIndex(of: holder) {
             if idx == 0 {
-                holderName = "你持有核心 (被打\(coreHitCount)/\(dropHitsRequired)次)"
+                holderName = "你持有核心 (被打\(coreHitCount)/\(GameConfig.dropHitsRequired)次)"
             } else {
-                holderName = "Bot\(idx)持有核心 (被打\(coreHitCount)/\(dropHitsRequired)次)"
+                holderName = "Bot\(idx)持有核心 (被打\(coreHitCount)/\(GameConfig.dropHitsRequired)次)"
             }
         } else {
             holderName = "核心未被拾取"
@@ -993,8 +904,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let me = players.first else { return }
         let target = me.position
         let desired = CGPoint(
-            x: cameraNode.position.x + (target.x - cameraNode.position.x) * cameraLerp,
-            y: cameraNode.position.y + (target.y - cameraNode.position.y) * cameraLerp
+            x: cameraNode.position.x + (target.x - cameraNode.position.x) * GameConfig.cameraLerp,
+            y: cameraNode.position.y + (target.y - cameraNode.position.y) * GameConfig.cameraLerp
         )
         cameraNode.position = clampCameraPosition(desired)
     }
