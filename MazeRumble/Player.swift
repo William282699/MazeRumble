@@ -22,6 +22,8 @@ final class Player: SKShapeNode {
 
     private(set) var state: PlayerState = .idle
     private var stateTimer: TimeInterval = 0
+    private(set) var isSprinting: Bool = false
+    private var sprintTimer: TimeInterval = 0
 
     init(index: Int, color: UIColor, isMainPlayer: Bool, appearance: AppearanceType = .normal) {
         self.index = index
@@ -81,6 +83,20 @@ final class Player: SKShapeNode {
             stateTimer = 0
             state = .idle
             removeStateEffects()
+        }
+    }
+
+    func startSprint(duration: TimeInterval) {
+        isSprinting = true
+        sprintTimer = duration
+    }
+
+    func updateSprint(deltaTime: TimeInterval) {
+        guard isSprinting else { return }
+        sprintTimer -= deltaTime
+        if sprintTimer <= 0 {
+            sprintTimer = 0
+            isSprinting = false
         }
     }
 

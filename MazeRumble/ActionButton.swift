@@ -11,6 +11,8 @@ final class ActionButton: SKNode {
     enum ActionType: String {
         case push = "推"
         case tackle = "铲"
+        case dash = "冲"
+        case sprint = "跑"
     }
     
     let actionType: ActionType
@@ -54,9 +56,13 @@ final class ActionButton: SKNode {
         fatalError("init(coder:) has not been implemented")
     }
     
-    func contains(_ point: CGPoint) -> Bool {
+    func isPointInside(_ point: CGPoint) -> Bool {
         let localPoint = convert(point, from: parent!)
         return hypot(localPoint.x, localPoint.y) <= buttonRadius
+    }
+
+    func contains(_ point: CGPoint) -> Bool {
+        isPointInside(point)
     }
     
     func startCooldown(duration: TimeInterval) {
