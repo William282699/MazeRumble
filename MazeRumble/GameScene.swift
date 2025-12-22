@@ -27,9 +27,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var playerItems: [[String]] = Array(repeating: [], count: 8)
     private var lastItemGiveTime: TimeInterval = 0
 
-    // 终点门
-    private var gates: [SKShapeNode] = []
-
     // 破门冲刺
     private var finalDashTriggered = false
     private var finalDashEndTime: TimeInterval = 0
@@ -46,6 +43,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private let worldNode = SKNode()
     private let uiNode = SKNode()
     private let cameraNode = SKCameraNode()
+    private let botAI = BotAI()
+    private var mapManager: MapManager?
     private var inputController: InputController?
     private var uiManager: UIManager?
 
@@ -68,10 +67,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         inputController = InputController(uiNode: uiNode)
         uiManager = UIManager(uiNode: uiNode)
 
-        createBorder()
-        createMaze()
-        createCenterZone()
-        createGates()
+        mapManager = MapManager(scene: self, worldNode: worldNode, worldSize: worldSize)
+        mapManager?.createBorder()
+        mapManager?.createMaze()
+        mapManager?.createCenterZone()
+        mapManager?.createGates()
         createCore()
         createPlayers()
         inputController?.createJoystick()
@@ -90,119 +90,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private var worldCenter: CGPoint {
         CGPoint(x: worldSize.width / 2, y: worldSize.height / 2)
-    }
-
-    // MARK: - 边界（和 size 对齐）
-    private func createBorder() {
-        physicsBody = SKPhysicsBody(edgeLoopFrom: CGRect(origin: .zero, size: worldSize))
-        physicsBody?.friction = 0.0
-    }
-
-    // MARK: - 迷宫墙体
-    private func createMaze() {
-        let w = worldSize.width
-        let h = worldSize.height
-
-        let wallData: [[CGFloat]] = [
-            [w * 0.5, h * 0.55, w * 0.6, 24],
-            [w * 0.5, h * 0.42, w * 0.55, 24],
-            [w * 0.35, h * 0.68, 24, h * 0.26],
-            [w * 0.65, h * 0.32, 24, h * 0.28],
-            [w * 0.2, h * 0.5, 180, 24],
-            [w * 0.8, h * 0.5, 180, 24],
-            [w * 0.5, h * 0.75, 280, 24],
-            [w * 0.5, h * 0.25, 280, 24],
-            [w * 0.25, h * 0.25, 24, 240],
-            [w * 0.75, h * 0.75, 24, 240],
-            [w * 0.5, h * 0.62, 180, 24],
-            [w * 0.58, h * 0.18, 200, 24]
-        ]
-
-        for data in wallData {
-            let wallSize = CGSize(width: data[2], height: data[3])
-            let wall = SKShapeNode(rectOf: wallSize)
-            wall.fillColor = SKColor(red: 0.4, green: 0.3, blue: 0.2, alpha: 1.0)
-            wall.strokeColor = .black
-            wall.lineWidth = 2
-            wall.position = CGPoint(x: data[0], y: data[1])
-            wall.zPosition = 5
-            wall.name = "wall"
-
-            wall.physicsBody = SKPhysicsBody(rectangleOf: wallSize)
-            wall.physicsBody?.isDynamic = false
-            wall.physicsBody?.friction = 0.3
-            wall.physicsBody?.restitution = 0.2
-            wall.physicsBody?.categoryBitMask = PhysicsCategory.wall
-            wall.physicsBody?.collisionBitMask = PhysicsCategory.player
-            wall.physicsBody?.contactTestBitMask = 0
-
-            worldNode.addChild(wall)
-        }
-    }
-
-    // MARK: - 中心区域
-    private func createCenterZone() {
-        let center = worldCenter
-
-        let zone = SKShapeNode(circleOfRadius: GameConfig.centerZoneRadius)
-        zone.fillColor = .yellow
-        zone.strokeColor = .orange
-        zone.lineWidth = 4
-        zone.alpha = 0.30
-        zone.position = center
-        zone.zPosition = 1
-        zone.name = "centerZone"
-        worldNode.addChild(zone)
-
-        let pulse = SKAction.sequence([
-            SKAction.scale(to: 1.08, duration: 1.0),
-            SKAction.scale(to: 1.0, duration: 1.0)
-        ])
-        zone.run(.repeatForever(pulse))
-
-        let label = SKLabelNode(text: "目标区")
-        label.fontSize = 26
-        label.fontColor = .white
-        label.position = center
-        label.zPosition = 2
-        worldNode.addChild(label)
-    }
-
-    // MARK: - 终点门
-    private func createGates() {
-        gates.forEach { $0.removeFromParent() }
-        gates.removeAll()
-
-        let usableWidth = worldSize.width * 0.8
-        let startX = (worldSize.width - usableWidth) / 2
-        let y = worldSize.height - GameConfig.gateSize.height
-
-        for i in 0..<GameConfig.gateCount {
-            let gate = SKShapeNode(rectOf: GameConfig.gateSize, cornerRadius: 6)
-            gate.fillColor = SKColor.green.withAlphaComponent(0.5)
-            gate.strokeColor = SKColor.green
-            gate.lineWidth = 3
-            let x = startX + CGFloat(i) * (usableWidth / CGFloat(GameConfig.gateCount - 1))
-            gate.position = CGPoint(x: x, y: y)
-            gate.zPosition = 3
-            gate.name = "gate_\(i)"
-
-            let label = SKLabelNode(text: String(UnicodeScalar(65 + i)!)) // A-E
-            label.fontColor = .white
-            label.fontSize = 18
-            label.verticalAlignmentMode = .center
-            label.position = .zero
-            gate.addChild(label)
-
-            let pulse = SKAction.sequence([
-                SKAction.fadeAlpha(to: 1.0, duration: 0.8),
-                SKAction.fadeAlpha(to: 0.4, duration: 0.8)
-            ])
-            gate.run(.repeatForever(pulse))
-
-            worldNode.addChild(gate)
-            gates.append(gate)
-        }
     }
 
     // MARK: - 核心
@@ -292,7 +179,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         updateTimer(delta: dt)
         updatePlayerMovement()
-        updateBotAI()
+        if let c = core {
+            botAI.coreHolder = coreHolder
+            botAI.isFinalDashTriggered = finalDashTriggered
+            botAI.update(bots: Array(players.dropFirst()), target: c.position)
+        }
         checkCorePickup()
         checkFinishGates()
         checkFinalDash(currentTime: currentTime)
@@ -330,42 +221,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let vx = body.velocity.dx + (desired.dx - body.velocity.dx) * GameConfig.accelLerp
         let vy = body.velocity.dy + (desired.dy - body.velocity.dy) * GameConfig.accelLerp
         body.velocity = CGVector(dx: vx, dy: vy)
-    }
-
-    // MARK: - Bot AI：追核心/追持有者
-    private func updateBotAI() {
-        guard let c = core else { return }
-
-        for i in 1..<players.count {
-            let bot = players[i]
-            guard let body = bot.physicsBody else { continue }
-
-            let target: CGPoint
-            if let holder = coreHolder, holder != bot {
-                target = holder.position
-            } else {
-                target = c.position
-            }
-
-            let dx = target.x - bot.position.x
-            let dy = target.y - bot.position.y
-            let dist = hypot(dx, dy)
-
-            var dir = CGVector.zero
-            if dist > 20 {
-                dir = CGVector(dx: dx / dist, dy: dy / dist)
-            }
-
-            let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == bot) ? GameConfig.finalDashSpeedMultiplier : 1.0
-            let desiredSpeed = GameConfig.botMaxSpeed * speedMultiplier
-
-            let desired = CGVector(dx: dir.dx * desiredSpeed,
-                                  dy: dir.dy * desiredSpeed)
-
-            let vx = body.velocity.dx + (desired.dx - body.velocity.dx) * GameConfig.botAccelLerp
-            let vy = body.velocity.dy + (desired.dy - body.velocity.dy) * GameConfig.botAccelLerp
-            body.velocity = CGVector(dx: vx, dy: vy)
-        }
     }
 
     // MARK: - 核心拾取
@@ -471,7 +326,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - 终点门胜利
     private func checkFinishGates() {
         guard let holder = coreHolder else { return }
-        for gate in gates {
+        for gate in mapManager?.gates ?? [] {
             let d = hypot(holder.position.x - gate.position.x, holder.position.y - gate.position.y)
             if d < GameConfig.gateWinDistance {
                 gameOver(winner: holder)
@@ -495,7 +350,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
         if finalDashUsed { return }
 
-        for gate in gates {
+        for gate in mapManager?.gates ?? [] {
             let d = hypot(holder.position.x - gate.position.x, holder.position.y - gate.position.y)
             if d < GameConfig.finalDashTriggerDistance {
                 finalDashTriggered = true
