@@ -15,8 +15,6 @@ final class InputController {
     private(set) var joystickKnob: SKShapeNode?
     private(set) var pushButton: ActionButton?
     private(set) var tackleButton: ActionButton?
-    private(set) var dashButton: ActionButton?
-    private(set) var sprintButton: ActionButton?
     private var moveDirection = CGVector.zero
     private var isTouching = false
 
@@ -60,16 +58,6 @@ final class InputController {
         tackle.zPosition = 200
         uiNode.addChild(tackle)
         tackleButton = tackle
-
-        let dash = ActionButton(type: .dash)
-        dash.zPosition = 200
-        uiNode.addChild(dash)
-        dashButton = dash
-
-        let sprint = ActionButton(type: .sprint)
-        sprint.zPosition = 200
-        uiNode.addChild(sprint)
-        sprintButton = sprint
     }
 
     func layoutJoystick(for sceneSize: CGSize) {
@@ -88,16 +76,9 @@ final class InputController {
         let halfWidth = sceneSize.width / 2
         let halfHeight = sceneSize.height / 2
 
-        // 右下角，4个按钮 2x2 排列
-        let rightX = halfWidth - 60
-        let rightX2 = halfWidth - 140
-        let bottomY = -halfHeight + 100
-        let topY = -halfHeight + 180
-
-        pushButton?.position = CGPoint(x: rightX, y: topY)
-        tackleButton?.position = CGPoint(x: rightX, y: bottomY)
-        dashButton?.position = CGPoint(x: rightX2, y: topY)
-        sprintButton?.position = CGPoint(x: rightX2, y: bottomY)
+        // 右下角，两个按钮垂直排列
+        pushButton?.position = CGPoint(x: halfWidth - 60, y: -halfHeight + 180)
+        tackleButton?.position = CGPoint(x: halfWidth - 60, y: -halfHeight + 100)
     }
 
     func handleTouchBegan(at location: CGPoint) {
@@ -122,22 +103,14 @@ final class InputController {
     func updateActionButtons(deltaTime: TimeInterval) {
         pushButton?.updateCooldown(deltaTime: deltaTime)
         tackleButton?.updateCooldown(deltaTime: deltaTime)
-        dashButton?.updateCooldown(deltaTime: deltaTime)
-        sprintButton?.updateCooldown(deltaTime: deltaTime)
     }
 
     func getActionButtonPressed(at location: CGPoint) -> ActionButton.ActionType? {
-        if let push = pushButton, !push.isOnCooldown, push.isPointInside(location) {
+        if let push = pushButton, !push.isOnCooldown, push.contains(location) {
             return .push
         }
-        if let tackle = tackleButton, !tackle.isOnCooldown, tackle.isPointInside(location) {
+        if let tackle = tackleButton, !tackle.isOnCooldown, tackle.contains(location) {
             return .tackle
-        }
-        if let dash = dashButton, !dash.isOnCooldown, dash.isPointInside(location) {
-            return .dash
-        }
-        if let sprint = sprintButton, !sprint.isOnCooldown, sprint.isPointInside(location) {
-            return .sprint
         }
         return nil
     }
