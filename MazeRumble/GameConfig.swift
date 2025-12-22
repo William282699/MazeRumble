@@ -47,6 +47,16 @@ struct GameConfig {
     // MARK: - Physics
     static let dropImpulseThreshold: CGFloat = 50
 
+    // MARK: - Actions
+    static let pushRange: CGFloat = 60           // 推人范围
+    static let pushForce: CGFloat = 800          // 推人力度
+    static let pushCooldown: TimeInterval = 1.5  // 推人冷却
+
+    static let tackleRange: CGFloat = 80         // 铲人范围
+    static let tackleForce: CGFloat = 600        // 铲人力度（自己也会冲出去）
+    static let tackleCooldown: TimeInterval = 2.0 // 铲人冷却
+    static let tackleDownDuration: TimeInterval = 1.0  // 被铲倒地时间
+
     // MARK: - World / Camera
     static let worldScaleFactor: CGFloat = 3.0
     static let cameraLerp: CGFloat = 0.18

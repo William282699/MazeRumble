@@ -156,6 +156,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !isMatchOver else { return }
         guard let touch = touches.first else { return }
         let loc = uiNode.convert(touch.location(in: self), from: self)
+
+        // 先检测动作按钮
+        if let actionType = inputController?.getActionButtonPressed(at: loc) {
+            performAction(actionType)
+            return  // 按钮点击不触发摇杆
+        }
+
+        // 否则处理摇杆
         inputController?.handleTouchBegan(at: loc)
     }
 
@@ -171,6 +179,86 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         inputController?.handleTouchEnded()
+    }
+
+    private func performAction(_ actionType: ActionButton.ActionType) {
+        guard let me = players.first, me.canAct else { return }
+
+        switch actionType {
+        case .push:
+            performPush(by: me)
+        case .tackle:
+            performTackle(by: me)
+        }
+    }
+
+    private func performPush(by player: Player) {
+        // 获取推的方向（摇杆方向，如果没有则用上一次移动方向或默认向前）
+        var pushDirection = inputController?.currentDirection ?? .zero
+        if pushDirection.dx == 0 && pushDirection.dy == 0 {
+            pushDirection = CGVector(dx: 0, dy: 1) // 默认向上
+        }
+
+        // 标准化方向
+        let length = hypot(pushDirection.dx, pushDirection.dy)
+        let normalizedDir = CGVector(dx: pushDirection.dx / length, dy: pushDirection.dy / length)
+
+        // 找到范围内的其他玩家
+        for target in players where target != player {
+            let dx = target.position.x - player.position.x
+            let dy = target.position.y - player.position.y
+            let distance = hypot(dx, dy)
+
+            if distance < GameConfig.pushRange {
+                // 推开目标
+                let pushVector = CGVector(dx: normalizedDir.dx * GameConfig.pushForce,
+                                          dy: normalizedDir.dy * GameConfig.pushForce)
+                target.physicsBody?.applyImpulse(pushVector)
+
+                showMessage("推！", color: .cyan)
+            }
+        }
+
+        // 启动冷却
+        inputController?.pushButton?.startCooldown(duration: GameConfig.pushCooldown)
+    }
+
+    private func performTackle(by player: Player) {
+        // 获取铲的方向
+        var tackleDirection = inputController?.currentDirection ?? .zero
+        if tackleDirection.dx == 0 && tackleDirection.dy == 0 {
+            tackleDirection = CGVector(dx: 0, dy: 1)
+        }
+
+        let length = hypot(tackleDirection.dx, tackleDirection.dy)
+        let normalizedDir = CGVector(dx: tackleDirection.dx / length, dy: tackleDirection.dy / length)
+
+        // 自己先冲出去一段距离
+        let selfDash = CGVector(dx: normalizedDir.dx * GameConfig.tackleForce * 0.8,
+                                dy: normalizedDir.dy * GameConfig.tackleForce * 0.8)
+        player.physicsBody?.applyImpulse(selfDash)
+
+        // 检测范围内的敌人并绊倒
+        for target in players where target != player {
+            let dx = target.position.x - player.position.x
+            let dy = target.position.y - player.position.y
+            let distance = hypot(dx, dy)
+
+            if distance < GameConfig.tackleRange {
+                // 绊倒目标（进入倒地状态）
+                target.setState(.downed, duration: GameConfig.tackleDownDuration)
+
+                // 也给目标一个小推力
+                let pushVector = CGVector(dx: normalizedDir.dx * GameConfig.tackleForce * 0.3,
+                                          dy: normalizedDir.dy * GameConfig.tackleForce * 0.3)
+                target.physicsBody?.applyImpulse(pushVector)
+
+                showMessage("铲倒！", color: .orange)
+            }
+        }
+
+        // 启动冷却
+        inputController?.tackleButton?.startCooldown(duration: GameConfig.tackleCooldown)
     }
 
     // MARK: - 每帧更新
