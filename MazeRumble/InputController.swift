@@ -13,6 +13,8 @@ final class InputController {
 
     private(set) var joystick: SKShapeNode?
     private(set) var joystickKnob: SKShapeNode?
+    private(set) var pushButton: ActionButton?
+    private(set) var tackleButton: ActionButton?
     private var moveDirection = CGVector.zero
     private var isTouching = false
 
@@ -44,6 +46,20 @@ final class InputController {
         joystickKnob = knob
     }
 
+    func createActionButtons() {
+        guard let uiNode else { return }
+
+        let push = ActionButton(type: .push)
+        push.zPosition = 200
+        uiNode.addChild(push)
+        pushButton = push
+
+        let tackle = ActionButton(type: .tackle)
+        tackle.zPosition = 200
+        uiNode.addChild(tackle)
+        tackleButton = tackle
+    }
+
     func layoutJoystick(for sceneSize: CGSize) {
         let halfWidth = sceneSize.width / 2
         let halfHeight = sceneSize.height / 2
@@ -54,6 +70,15 @@ final class InputController {
         if let knob = joystickKnob, let base = joystick {
             knob.position = base.position
         }
+    }
+
+    func layoutActionButtons(for sceneSize: CGSize) {
+        let halfWidth = sceneSize.width / 2
+        let halfHeight = sceneSize.height / 2
+
+        // 右下角，两个按钮垂直排列
+        pushButton?.position = CGPoint(x: halfWidth - 60, y: -halfHeight + 180)
+        tackleButton?.position = CGPoint(x: halfWidth - 60, y: -halfHeight + 100)
     }
 
     func handleTouchBegan(at location: CGPoint) {
@@ -73,6 +98,21 @@ final class InputController {
     func handleTouchEnded() {
         isTouching = false
         resetJoystick()
+    }
+
+    func updateActionButtons(deltaTime: TimeInterval) {
+        pushButton?.updateCooldown(deltaTime: deltaTime)
+        tackleButton?.updateCooldown(deltaTime: deltaTime)
+    }
+
+    func getActionButtonPressed(at location: CGPoint) -> ActionButton.ActionType? {
+        if let push = pushButton, !push.isOnCooldown, push.contains(location) {
+            return .push
+        }
+        if let tackle = tackleButton, !tackle.isOnCooldown, tackle.contains(location) {
+            return .tackle
+        }
+        return nil
     }
 
     private func updateJoystick(with location: CGPoint) {

@@ -75,9 +75,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         createCore()
         createPlayers()
         inputController?.createJoystick()
+        inputController?.createActionButtons()
         uiManager?.createUI()
         inputController?.layoutJoystick(for: size)
         uiManager?.layoutUI(for: size)
+        inputController?.layoutActionButtons(for: size)
         focusCameraInstantly()
         startRound()
     }
@@ -85,6 +87,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         inputController?.layoutJoystick(for: size)
+        inputController?.layoutActionButtons(for: size)
         uiManager?.layoutUI(for: size)
     }
 
@@ -179,6 +182,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !isMatchOver else { return }
 
         updateTimer(delta: dt)
+        inputController?.updateActionButtons(deltaTime: dt)
         // 更新所有玩家状态
         for player in players {
             player.updateState(deltaTime: dt)
