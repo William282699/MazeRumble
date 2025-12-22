@@ -178,6 +178,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !isMatchOver else { return }
 
         updateTimer(delta: dt)
+        // 更新所有玩家状态
+        for player in players {
+            player.updateState(deltaTime: dt)
+        }
         updatePlayerMovement()
         if let c = core {
             botAI.coreHolder = coreHolder
@@ -210,6 +214,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - 你（0号玩家）移动：目标速度插值
     private func updatePlayerMovement() {
         guard let me = players.first, let body = me.physicsBody else { return }
+        guard me.canMove else {
+            body.velocity = .zero
+            return
+        }
 
         let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == me) ? GameConfig.finalDashSpeedMultiplier : 1.0
         let desiredSpeed = GameConfig.playerMaxSpeed * speedMultiplier

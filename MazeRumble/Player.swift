@@ -2,9 +2,19 @@ import SpriteKit
 import UIKit
 
 final class Player: SKShapeNode {
+    enum PlayerState {
+        case idle      // 正常
+        case running   // 跑动中
+        case stunned   // 眩晕（被棒子/枪/炸弹击中）
+        case downed    // 倒地（被钩索/飞铲绊倒）
+    }
+
     let index: Int
     let isMainPlayer: Bool
     let playerColor: UIColor
+
+    private(set) var state: PlayerState = .idle
+    private var stateTimer: TimeInterval = 0
 
     init(index: Int, color: UIColor, isMainPlayer: Bool) {
         self.index = index
@@ -36,6 +46,28 @@ final class Player: SKShapeNode {
 
     required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func setState(_ newState: PlayerState, duration: TimeInterval = 0) {
+        state = newState
+        stateTimer = duration
+    }
+
+    func updateState(deltaTime: TimeInterval) {
+        guard stateTimer > 0 else { return }
+        stateTimer -= deltaTime
+        if stateTimer <= 0 {
+            stateTimer = 0
+            state = .idle
+        }
+    }
+
+    var canMove: Bool {
+        state == .idle || state == .running
+    }
+
+    var canAct: Bool {
+        state == .idle || state == .running
     }
 
     private func setupAppearance() {
