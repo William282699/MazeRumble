@@ -24,6 +24,8 @@ final class Player: SKShapeNode {
     private var stateTimer: TimeInterval = 0
     private(set) var isSprinting: Bool = false
     private var sprintTimer: TimeInterval = 0
+    private(set) var inventory: [Item.ItemType] = []
+    let maxInventorySize = 2
 
     init(index: Int, color: UIColor, isMainPlayer: Bool, appearance: AppearanceType = .normal) {
         self.index = index
@@ -98,6 +100,30 @@ final class Player: SKShapeNode {
             sprintTimer = 0
             isSprinting = false
         }
+    }
+
+    func canPickupItem() -> Bool {
+        return inventory.count < maxInventorySize
+    }
+
+    func pickupItem(_ type: Item.ItemType) -> Bool {
+        guard canPickupItem() else { return false }
+        inventory.append(type)
+        return true
+    }
+
+    func dropItem(at index: Int) -> Item.ItemType? {
+        guard index >= 0 && index < inventory.count else { return nil }
+        return inventory.remove(at: index)
+    }
+
+    func useItem(at index: Int) -> Item.ItemType? {
+        guard index >= 0 && index < inventory.count else { return nil }
+        return inventory.remove(at: index)
+    }
+
+    func clearInventory() {
+        inventory.removeAll()
     }
 
     var canMove: Bool {
