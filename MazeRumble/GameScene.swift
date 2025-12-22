@@ -138,7 +138,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let spawn = CGPoint(x: x, y: y)
             spawnPositions.append(spawn)
 
-            let player = Player(index: i, color: colors[i], isMainPlayer: i == 0)
+            let appearance: Player.AppearanceType = (i == 0) ? .normal : Player.AppearanceType.allCases.randomElement() ?? .normal
+            let player = Player(index: i, color: colors[i], isMainPlayer: i == 0, appearance: appearance)
             player.position = spawn
 
             worldNode.addChild(player)
