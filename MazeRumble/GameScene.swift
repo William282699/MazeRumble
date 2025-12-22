@@ -17,6 +17,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - 游戏对象
     private var players: [Player] = []               // 8个玩家（0号是你）
+    private var items: [Item] = []
     private var spawnPositions: [CGPoint] = []       // 出生点
     private var core: SKShapeNode?                   // 核心物品
     private var coreHolder: Player?                  // 谁拿着核心
@@ -340,6 +341,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             botAI.update(bots: Array(players.dropFirst()), target: c.position)
         }
         checkCorePickup()
+        checkItemPickup()
         checkFinishGates()
         checkFinalDash(currentTime: currentTime)
         updateCoreAutoItems(currentTime: currentTime)
@@ -392,6 +394,23 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             if d < GameConfig.pickupDistance {
                 pickupCore(player: p)
                 break
+            }
+        }
+    }
+
+    private func checkItemPickup() {
+        guard let me = players.first else { return }
+        
+        for item in items where item.isOnGround {
+            let distance = hypot(me.position.x - item.position.x,
+                                me.position.y - item.position.y)
+            if distance < GameConfig.itemPickupRange {
+                if me.pickupItem(item.itemType) {
+                    item.removeFromParent()
+                    items.removeAll { $0 === item }
+                    showMessage("捡到 \(item.itemType.rawValue)！", color: .green)
+                    break  // 一次只捡一个
+                }
             }
         }
     }
@@ -642,6 +661,28 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         uiManager?.updateTimerLabel(roundTimeRemaining: roundTimeRemaining)
         uiManager?.updateScoreBoard(coreHolder: coreHolder, players: players, coreHitCount: coreHitCount)
         focusCameraInstantly()
+        spawnTestItems()
+    }
+
+    private func spawnTestItems() {
+        // 清除旧道具
+        items.forEach { $0.removeFromParent() }
+        items.removeAll()
+        
+        // 在地图上随机生成几个测试道具
+        let testTypes: [Item.ItemType] = [.stick, .bomb, .hook, .gun, .shield]
+        let center = worldCenter
+        
+        for (index, type) in testTypes.enumerated() {
+            let item = Item(type: type)
+            let angle = CGFloat(index) * (2 * .pi / CGFloat(testTypes.count))
+            let radius: CGFloat = 200
+            item.position = CGPoint(x: center.x + cos(angle) * radius,
+                                    y: center.y + sin(angle) * radius)
+            item.zPosition = 15
+            worldNode.addChild(item)
+            items.append(item)
+        }
     }
 
     private func resetEntitiesForRound() {
@@ -665,6 +706,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             p.setScale(1.0)
             p.childNode(withName: "glow")?.removeFromParent()
             p.childNode(withName: "finalDashGlow")?.removeFromParent()
+            p.clearInventory()
             if let body = p.physicsBody {
                 body.velocity = .zero
                 body.angularVelocity = 0
