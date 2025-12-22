@@ -4,22 +4,20 @@ import UIKit
 final class Player: SKShapeNode {
     let index: Int
     let isMainPlayer: Bool
+    let playerColor: UIColor
 
     init(index: Int, color: UIColor, isMainPlayer: Bool) {
         self.index = index
         self.isMainPlayer = isMainPlayer
+        self.playerColor = color
         super.init()
 
-        let radius: CGFloat = 20
-        let circlePath = CGPath(ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2), transform: nil)
-        path = circlePath
-        fillColor = color
-        strokeColor = .black
-        lineWidth = 2
+        setupAppearance()
         zPosition = 10
         name = "player_\(index)"
 
-        physicsBody = SKPhysicsBody(circleOfRadius: radius)
+        let physicsRadius: CGFloat = 20
+        physicsBody = SKPhysicsBody(circleOfRadius: physicsRadius)
         physicsBody?.isDynamic = true
         physicsBody?.mass = 1.0
         physicsBody?.friction = 0.2
@@ -38,6 +36,31 @@ final class Player: SKShapeNode {
 
     required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupAppearance() {
+        lineWidth = 0
+
+        let headRadius: CGFloat = 10
+        let head = SKShapeNode(circleOfRadius: headRadius)
+        head.fillColor = playerColor
+        head.strokeColor = .black
+        head.lineWidth = 2
+        head.position = CGPoint(x: 0, y: 10)
+        head.zPosition = 11
+        head.name = "head"
+        addChild(head)
+
+        let bodySize = CGSize(width: 24, height: 22)
+        let bodyRect = CGRect(origin: CGPoint(x: -bodySize.width / 2, y: -bodySize.height - 2), size: bodySize)
+        let bodyPath = CGPath(roundedRect: bodyRect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+        let body = SKShapeNode(path: bodyPath)
+        body.fillColor = playerColor
+        body.strokeColor = .black
+        body.lineWidth = 2
+        body.zPosition = 11
+        body.name = "body"
+        addChild(body)
     }
 
     private func addMainPlayerIndicators() {
