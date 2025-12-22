@@ -14,6 +14,10 @@ final class BotAI {
 
     func update(bots: [Player], target: CGPoint) {
         for bot in bots {
+            guard bot.canMove else {
+                bot.physicsBody?.velocity = .zero
+                continue
+            }
             guard let body = bot.physicsBody else { continue }
 
             let targetPosition: CGPoint
