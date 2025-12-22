@@ -201,6 +201,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             performPush(by: me)
         case .tackle:
             performTackle(by: me)
+        case .dash:
+            performDash(by: me)
+        case .sprint:
+            performSprint(by: me)
         }
     }
 
@@ -274,6 +278,46 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         inputController?.tackleButton?.startCooldown(duration: GameConfig.tackleCooldown)
     }
 
+    private func performDash(by player: Player) {
+        var dashDirection = inputController?.currentDirection ?? .zero
+        if dashDirection.dx == 0 && dashDirection.dy == 0 {
+            dashDirection = CGVector(dx: 0, dy: 1)
+        }
+
+        let length = hypot(dashDirection.dx, dashDirection.dy)
+        let normalizedDir = CGVector(dx: dashDirection.dx / length, dy: dashDirection.dy / length)
+
+        // 自己冲出去
+        let dashVector = CGVector(dx: normalizedDir.dx * GameConfig.dashForce,
+                                  dy: normalizedDir.dy * GameConfig.dashForce)
+        player.physicsBody?.applyImpulse(dashVector)
+
+        // 冲撞范围内的敌人
+        for target in players where target != player {
+            let dx = target.position.x - player.position.x
+            let dy = target.position.y - player.position.y
+            let distance = hypot(dx, dy)
+
+            if distance < GameConfig.dashKnockbackRange {
+                let knockback = CGVector(dx: normalizedDir.dx * GameConfig.dashKnockbackForce,
+                                         dy: normalizedDir.dy * GameConfig.dashKnockbackForce)
+                target.physicsBody?.applyImpulse(knockback)
+                showMessage("撞飞！", color: .red)
+            }
+        }
+
+        inputController?.dashButton?.startCooldown(duration: GameConfig.dashCooldown)
+        showMessage("猛冲！", color: .yellow)
+    }
+
+    private func performSprint(by player: Player) {
+        guard !player.isSprinting else { return }  // 已经在快跑则不重复触发
+
+        player.startSprint(duration: GameConfig.sprintDuration)
+        inputController?.sprintButton?.startCooldown(duration: GameConfig.sprintCooldown)
+        showMessage("快跑！", color: .green)
+    }
+
     // MARK: - 每帧更新
     override func update(_ currentTime: TimeInterval) {
         if lastUpdateTime == 0 { lastUpdateTime = currentTime }
@@ -287,6 +331,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // 更新所有玩家状态
         for player in players {
             player.updateState(deltaTime: dt)
+            player.updateSprint(deltaTime: dt)  // 更新快跑状态
         }
         updatePlayerMovement()
         if let c = core {
@@ -325,7 +370,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
 
-        let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == me) ? GameConfig.finalDashSpeedMultiplier : 1.0
+        let sprintMultiplier: CGFloat = me.isSprinting ? GameConfig.sprintSpeedMultiplier : 1.0
+        let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == me) ? GameConfig.finalDashSpeedMultiplier : sprintMultiplier
         let desiredSpeed = GameConfig.playerMaxSpeed * speedMultiplier
 
         let moveDirection = inputController?.currentDirection ?? .zero
