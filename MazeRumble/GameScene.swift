@@ -35,23 +35,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var finalDashEndTime: TimeInterval = 0
     private var finalDashUsed = false
 
-    // MARK: - 控制（虚拟摇杆）
-    private var joystick: SKShapeNode?
-    private var joystickKnob: SKShapeNode?
-    private var moveDirection = CGVector.zero
-    private var isTouching = false
-
-    // MARK: - UI
-    private var scoreBoardLabel: SKLabelNode?
-    private var scoreBoardShadow: SKLabelNode?
-    private var scoreBoardBackground: SKShapeNode?
-    private var playerProgressTrack: SKShapeNode?
-    private var botProgressTrack: SKShapeNode?
-    private var playerProgressBar: SKSpriteNode?
-    private var botProgressBar: SKSpriteNode?
-    private var timerLabel: SKLabelNode?
-    private var hintLabel: SKLabelNode?
-
     private var roundTimeRemaining: TimeInterval = GameConfig.gameTimeLimit
     private var lastUpdateTime: TimeInterval = 0
 
@@ -63,6 +46,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private let worldNode = SKNode()
     private let uiNode = SKNode()
     private let cameraNode = SKCameraNode()
+    private var inputController: InputController?
+    private var uiManager: UIManager?
 
     // MARK: - 初始化场景
     override func didMove(to view: SKView) {
@@ -80,22 +65,27 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         camera = cameraNode
         uiNode.zPosition = 10_000
 
+        inputController = InputController(uiNode: uiNode)
+        uiManager = UIManager(uiNode: uiNode)
+
         createBorder()
         createMaze()
         createCenterZone()
         createGates()
         createCore()
         createPlayers()
-        createJoystick()
-        createUI()
-        layoutUI()
+        inputController?.createJoystick()
+        uiManager?.createUI()
+        inputController?.layoutJoystick(for: size)
+        uiManager?.layoutUI(for: size)
         focusCameraInstantly()
         startRound()
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
-        layoutUI()
+        inputController?.layoutJoystick(for: size)
+        uiManager?.layoutUI(for: size)
     }
 
     private var worldCenter: CGPoint {
@@ -270,190 +260,26 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // MARK: - 虚拟摇杆
-    private func createJoystick() {
-        let base = SKShapeNode(circleOfRadius: GameConfig.joystickBaseRadius)
-        base.fillColor = SKColor.gray.withAlphaComponent(0.35)
-        base.strokeColor = .white
-        base.lineWidth = 2
-        base.zPosition = 200
-        uiNode.addChild(base)
-        joystick = base
-
-        let knob = SKShapeNode(circleOfRadius: GameConfig.joystickKnobRadius)
-        knob.fillColor = SKColor.white.withAlphaComponent(0.65)
-        knob.strokeColor = .black
-        knob.lineWidth = 2
-        knob.zPosition = 201
-        uiNode.addChild(knob)
-        joystickKnob = knob
-    }
-
-    // MARK: - UI
-    private func createUI() {
-        let bg = SKShapeNode(rectOf: GameConfig.scoreBackgroundSize, cornerRadius: 18)
-        bg.fillColor = UIColor(red: 0.05, green: 0.08, blue: 0.12, alpha: 0.78)
-        bg.strokeColor = UIColor.white.withAlphaComponent(0.85)
-        bg.lineWidth = 2.5
-        bg.zPosition = 298
-        bg.name = "scoreBoardBackground"
-        uiNode.addChild(bg)
-        scoreBoardBackground = bg
-
-        let shadow = SKLabelNode(text: "核心未被拾取")
-        shadow.fontSize = 32
-        shadow.fontName = "AvenirNext-Bold"
-        shadow.fontColor = UIColor.black.withAlphaComponent(0.55)
-        shadow.position = CGPoint(x: 0, y: -2)
-        shadow.zPosition = 299
-        uiNode.addChild(shadow)
-        scoreBoardShadow = shadow
-
-        let board = SKLabelNode(text: "核心未被拾取")
-        board.fontSize = 32
-        board.fontName = "AvenirNext-Bold"
-        board.fontColor = .white
-        board.zPosition = 300
-        board.horizontalAlignmentMode = .center
-        board.verticalAlignmentMode = .center
-        uiNode.addChild(board)
-        scoreBoardLabel = board
-
-        let playerTrack = SKShapeNode(rectOf: CGSize(width: GameConfig.progressBarWidth, height: GameConfig.progressBarHeight), cornerRadius: GameConfig.progressBarHeight / 2)
-        playerTrack.fillColor = UIColor.white.withAlphaComponent(0.12)
-        playerTrack.strokeColor = UIColor.white.withAlphaComponent(0.35)
-        playerTrack.lineWidth = 1.5
-        playerTrack.zPosition = 299
-        uiNode.addChild(playerTrack)
-        playerProgressTrack = playerTrack
-
-        let playerFill = SKSpriteNode(color: UIColor(red: 0.15, green: 0.85, blue: 0.35, alpha: 0.9),
-                                      size: CGSize(width: GameConfig.progressBarWidth, height: GameConfig.progressBarHeight))
-        playerFill.anchorPoint = CGPoint(x: 0.0, y: 0.5)
-        playerFill.zPosition = 300
-        playerTrack.addChild(playerFill)
-        playerProgressBar = playerFill
-
-        let botTrack = SKShapeNode(rectOf: CGSize(width: GameConfig.progressBarWidth, height: GameConfig.progressBarHeight), cornerRadius: GameConfig.progressBarHeight / 2)
-        botTrack.fillColor = UIColor.white.withAlphaComponent(0.12)
-        botTrack.strokeColor = UIColor.white.withAlphaComponent(0.35)
-        botTrack.lineWidth = 1.5
-        botTrack.zPosition = 299
-        uiNode.addChild(botTrack)
-        botProgressTrack = botTrack
-
-        let botFill = SKSpriteNode(color: UIColor(red: 0.9, green: 0.25, blue: 0.35, alpha: 0.9),
-                                   size: CGSize(width: GameConfig.progressBarWidth, height: GameConfig.progressBarHeight))
-        botFill.anchorPoint = CGPoint(x: 1.0, y: 0.5)
-        botFill.zPosition = 300
-        botTrack.addChild(botFill)
-        botProgressBar = botFill
-
-        let timer = SKLabelNode(text: "02:00")
-        timer.fontSize = 30
-        timer.fontName = "AvenirNext-Bold"
-        timer.fontColor = .yellow
-        timer.zPosition = 300
-        timer.horizontalAlignmentMode = .center
-        uiNode.addChild(timer)
-        timerLabel = timer
-
-        let hint = SKLabelNode(text: "靠近任意门带核心冲线，2分钟内决出胜负")
-        hint.fontSize = 18
-        hint.fontName = "AvenirNext-DemiBold"
-        hint.fontColor = .yellow
-        hint.zPosition = 300
-        uiNode.addChild(hint)
-        hintLabel = hint
-    }
-
-    private func layoutUI() {
-        let halfWidth = size.width / 2
-        let halfHeight = size.height / 2
-
-        if let base = joystick {
-            base.position = CGPoint(x: -halfWidth + 110, y: -halfHeight + 130)
-        }
-        if let knob = joystickKnob, let base = joystick {
-            knob.position = base.position
-        }
-
-        let scoreY = halfHeight - 42
-        let scorePos = CGPoint(x: 0, y: scoreY)
-        scoreBoardBackground?.position = scorePos
-        scoreBoardShadow?.position = CGPoint(x: scorePos.x, y: scorePos.y - 2)
-        scoreBoardLabel?.position = scorePos
-
-        let barY = scoreY - 22
-        playerProgressTrack?.position = CGPoint(x: -GameConfig.scoreBackgroundSize.width / 2 + GameConfig.progressBarWidth / 2 + 14, y: barY)
-        botProgressTrack?.position = CGPoint(x: GameConfig.scoreBackgroundSize.width / 2 - GameConfig.progressBarWidth / 2 - 14, y: barY)
-        playerProgressBar?.position = CGPoint(x: -GameConfig.progressBarWidth / 2, y: 0)
-        botProgressBar?.position = CGPoint(x: GameConfig.progressBarWidth / 2, y: 0)
-
-        timerLabel?.position = CGPoint(x: 0, y: scoreY - 54)
-        hintLabel?.position = CGPoint(x: 0, y: scoreY - 88)
-    }
-
     // MARK: - 触摸（更宽松：左下角区域即可启动摇杆）
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard !isMatchOver else { return }
         guard let touch = touches.first else { return }
         let loc = uiNode.convert(touch.location(in: self), from: self)
-
-        if let base = joystick {
-            let d = hypot(loc.x - base.position.x, loc.y - base.position.y)
-            if d <= GameConfig.joystickTouchRadius || (loc.x < 0 && loc.y < 0) {
-                isTouching = true
-                updateJoystick(with: loc)
-            }
-        }
+        inputController?.handleTouchBegan(at: loc)
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard !isMatchOver, isTouching, let touch = touches.first else { return }
+        guard !isMatchOver, let touch = touches.first else { return }
         let loc = uiNode.convert(touch.location(in: self), from: self)
-        updateJoystick(with: loc)
+        inputController?.handleTouchMoved(at: loc)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        isTouching = false
-        resetJoystick()
+        inputController?.handleTouchEnded()
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        isTouching = false
-        resetJoystick()
-    }
-
-    private func updateJoystick(with location: CGPoint) {
-        guard let base = joystick, let knob = joystickKnob else { return }
-
-        let dx = location.x - base.position.x
-        let dy = location.y - base.position.y
-        let dist = hypot(dx, dy)
-
-        let maxDist = GameConfig.joystickBaseRadius
-
-        if dist <= maxDist {
-            knob.position = location
-        } else {
-            let a = atan2(dy, dx)
-            knob.position = CGPoint(x: base.position.x + cos(a) * maxDist,
-                                   y: base.position.y + sin(a) * maxDist)
-        }
-
-        if dist < GameConfig.joystickDeadZone {
-            moveDirection = .zero
-        } else {
-            let nx = dx / max(dist, 0.0001)
-            let ny = dy / max(dist, 0.0001)
-            moveDirection = CGVector(dx: nx, dy: ny)
-        }
-    }
-
-    private func resetJoystick() {
-        guard let base = joystick, let knob = joystickKnob else { return }
-        knob.run(.move(to: base.position, duration: 0.08))
-        moveDirection = .zero
+        inputController?.handleTouchEnded()
     }
 
     // MARK: - 每帧更新
@@ -483,6 +309,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
+    private func updateUI() {
+        uiManager?.updateUI(coreHolder: coreHolder,
+                            players: players,
+                            coreHitCount: coreHitCount,
+                            roundTimeRemaining: roundTimeRemaining)
+    }
+
     // MARK: - 你（0号玩家）移动：目标速度插值
     private func updatePlayerMovement() {
         guard let me = players.first, let body = me.physicsBody else { return }
@@ -490,6 +323,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let speedMultiplier: CGFloat = (finalDashTriggered && coreHolder == me) ? GameConfig.finalDashSpeedMultiplier : 1.0
         let desiredSpeed = GameConfig.playerMaxSpeed * speedMultiplier
 
+        let moveDirection = inputController?.currentDirection ?? .zero
         let desired = CGVector(dx: moveDirection.dx * desiredSpeed,
                               dy: moveDirection.dy * desiredSpeed)
 
@@ -790,8 +624,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         lastItemGiveTime = 0
 
         resetEntitiesForRound()
-        updateTimerLabel()
-        updateScoreBoard()
+        uiManager?.updateTimerLabel(roundTimeRemaining: roundTimeRemaining)
+        uiManager?.updateScoreBoard(coreHolder: coreHolder, players: players, coreHitCount: coreHitCount)
         focusCameraInstantly()
     }
 
@@ -824,48 +658,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // MARK: - UI helpers
-    private func updateScoreBoard() {
-        let holderName: String
-        if let holder = coreHolder, let idx = players.firstIndex(of: holder) {
-            if idx == 0 {
-                holderName = "你持有核心 (被打\(coreHitCount)/\(GameConfig.dropHitsRequired)次)"
-            } else {
-                holderName = "Bot\(idx)持有核心 (被打\(coreHitCount)/\(GameConfig.dropHitsRequired)次)"
-            }
-        } else {
-            holderName = "核心未被拾取"
-        }
-
-        scoreBoardLabel?.text = holderName
-        scoreBoardShadow?.text = holderName
-    }
-
-    private func updateTimerLabel() {
-        let minutes = Int(roundTimeRemaining) / 60
-        let seconds = Int(roundTimeRemaining) % 60
-        timerLabel?.text = String(format: "%02d:%02d", minutes, seconds)
-    }
-
-    private func updateUI() {
-        updateTimerLabel()
-        updateScoreBoard()
-    }
-
-
     private func showMessage(_ text: String, color: UIColor) {
-        let label = SKLabelNode(text: text)
-        label.fontSize = 22
-        label.fontColor = color
-        label.position = CGPoint(x: 0, y: size.height / 2 - 135)
-        label.zPosition = 400
-        uiNode.addChild(label)
-
-        label.run(.sequence([
-            .fadeIn(withDuration: 0.05),
-            .wait(forDuration: 1.6),
-            .fadeOut(withDuration: 0.35),
-            .removeFromParent()
-        ]))
+        uiManager?.showMessage(text, color: color, sceneSize: size)
     }
 
     private func clampCameraPosition(_ position: CGPoint) -> CGPoint {
