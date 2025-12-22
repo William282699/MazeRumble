@@ -10,6 +10,9 @@ struct GameConfig {
     // MARK: - Items
     static let itemInterval: TimeInterval = 8
     static let maxItemsPerPlayer = 3
+    
+    // MARK: - Items pickup
+    static let itemPickupRange: CGFloat = 45   // 道具拾取范围
 
     // MARK: - Final dash
     static let finalDashTriggerDistance: CGFloat = 100
