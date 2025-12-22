@@ -57,17 +57,6 @@ struct GameConfig {
     static let tackleCooldown: TimeInterval = 2.0 // 铲人冷却
     static let tackleDownDuration: TimeInterval = 1.0  // 被铲倒地时间
 
-    // MARK: - Dash (猛冲)
-    static let dashForce: CGFloat = 1200         // 猛冲力度
-    static let dashCooldown: TimeInterval = 3.0  // 猛冲冷却
-    static let dashKnockbackForce: CGFloat = 500 // 撞人后对方被推开的力度
-    static let dashKnockbackRange: CGFloat = 50  // 冲撞判定范围
-
-    // MARK: - Sprint (快跑)
-    static let sprintSpeedMultiplier: CGFloat = 1.8  // 快跑速度倍数
-    static let sprintDuration: TimeInterval = 2.0    // 快跑持续时间
-    static let sprintCooldown: TimeInterval = 5.0    // 快跑冷却
-
     // MARK: - World / Camera
     static let worldScaleFactor: CGFloat = 3.0
     static let cameraLerp: CGFloat = 0.18
