@@ -49,8 +49,21 @@ final class Player: SKShapeNode {
     }
 
     func setState(_ newState: PlayerState, duration: TimeInterval = 0) {
+        // 先清除旧状态效果
+        removeStateEffects()
+
         state = newState
         stateTimer = duration
+
+        // 添加新状态效果
+        switch newState {
+        case .stunned:
+            addStunnedEffect()
+        case .downed:
+            addDownedEffect()
+        default:
+            break
+        }
     }
 
     func updateState(deltaTime: TimeInterval) {
@@ -59,6 +72,7 @@ final class Player: SKShapeNode {
         if stateTimer <= 0 {
             stateTimer = 0
             state = .idle
+            removeStateEffects()
         }
     }
 
@@ -125,5 +139,47 @@ final class Player: SKShapeNode {
         arrow.zPosition = 102
         arrow.name = "youArrow"
         addChild(arrow)
+    }
+
+    private func removeStateEffects() {
+        childNode(withName: "stunnedEffect")?.removeFromParent()
+        childNode(withName: "downedEffect")?.removeFromParent()
+        zRotation = 0
+    }
+
+    private func addStunnedEffect() {
+        let container = SKNode()
+        container.name = "stunnedEffect"
+        container.position = CGPoint(x: 0, y: 30)
+        container.zPosition = 200
+
+        let orbitRadius: CGFloat = 12
+        let circleCount = 3
+        for i in 0..<circleCount {
+            let angle = CGFloat(i) * (2 * .pi / CGFloat(circleCount))
+            let circle = SKShapeNode(circleOfRadius: 4)
+            circle.fillColor = .yellow
+            circle.strokeColor = .clear
+            circle.position = CGPoint(x: cos(angle) * orbitRadius, y: sin(angle) * orbitRadius)
+            circle.zPosition = 201
+            container.addChild(circle)
+        }
+
+        let rotate = SKAction.rotate(byAngle: 2 * .pi, duration: 2.0)
+        container.run(SKAction.repeatForever(rotate))
+        addChild(container)
+    }
+
+    private func addDownedEffect() {
+        zRotation = .pi / 2
+
+        let zzz = SKLabelNode(text: "Zzz")
+        zzz.name = "downedEffect"
+        zzz.fontName = "Helvetica-Bold"
+        zzz.fontSize = 16
+        zzz.fontColor = .white
+        zzz.position = CGPoint(x: 0, y: 26)
+        zzz.zPosition = 200
+        addChild(zzz)
     }
 }
