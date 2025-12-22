@@ -2,6 +2,12 @@ import SpriteKit
 import UIKit
 
 final class Player: SKShapeNode {
+    enum AppearanceType: CaseIterable {
+        case normal     // 普通
+        case hat        // 戴帽子
+        case glasses    // 戴眼镜
+    }
+
     enum PlayerState {
         case idle      // 正常
         case running   // 跑动中
@@ -12,14 +18,16 @@ final class Player: SKShapeNode {
     let index: Int
     let isMainPlayer: Bool
     let playerColor: UIColor
+    let appearance: AppearanceType
 
     private(set) var state: PlayerState = .idle
     private var stateTimer: TimeInterval = 0
 
-    init(index: Int, color: UIColor, isMainPlayer: Bool) {
+    init(index: Int, color: UIColor, isMainPlayer: Bool, appearance: AppearanceType = .normal) {
         self.index = index
         self.isMainPlayer = isMainPlayer
         self.playerColor = color
+        self.appearance = appearance
         super.init()
 
         setupAppearance()
@@ -107,6 +115,44 @@ final class Player: SKShapeNode {
         body.zPosition = 11
         body.name = "body"
         addChild(body)
+
+        addAppearanceAccessories()
+    }
+
+    private func addAppearanceAccessories() {
+        switch appearance {
+        case .normal:
+            break
+        case .hat:
+            // 添加一个小帽子（三角形或半圆）在头顶
+            let hatPath = CGMutablePath()
+            hatPath.move(to: CGPoint(x: -8, y: 18))
+            hatPath.addLine(to: CGPoint(x: 8, y: 18))
+            hatPath.addLine(to: CGPoint(x: 0, y: 30))
+            hatPath.closeSubpath()
+            let hat = SKShapeNode(path: hatPath)
+            hat.fillColor = .brown
+            hat.strokeColor = .black
+            hat.lineWidth = 1
+            hat.zPosition = 12
+            hat.name = "hat"
+            addChild(hat)
+        case .glasses:
+            // 添加眼镜（两个小圆圈连线）
+            let glasses = SKShapeNode()
+            let glassesPath = CGMutablePath()
+            glassesPath.addEllipse(in: CGRect(x: -9, y: 7, width: 7, height: 7))
+            glassesPath.addEllipse(in: CGRect(x: 2, y: 7, width: 7, height: 7))
+            glassesPath.move(to: CGPoint(x: -2, y: 10))
+            glassesPath.addLine(to: CGPoint(x: 2, y: 10))
+            glasses.path = glassesPath
+            glasses.strokeColor = .black
+            glasses.lineWidth = 1.5
+            glasses.fillColor = .clear
+            glasses.zPosition = 12
+            glasses.name = "glasses"
+            addChild(glasses)
+        }
     }
 
     private func addMainPlayerIndicators() {
