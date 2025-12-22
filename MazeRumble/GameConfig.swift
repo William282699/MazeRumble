@@ -49,7 +49,7 @@ struct GameConfig {
 
     // MARK: - Actions
     static let pushRange: CGFloat = 60           // 推人范围
-    static let pushForce: CGFloat = 800          // 推人力度
+    static let pushForce: CGFloat = 300          // 推人力度（减小，轻推）
     static let pushCooldown: TimeInterval = 1.5  // 推人冷却
 
     static let tackleRange: CGFloat = 80         // 铲人范围
