@@ -88,6 +88,10 @@ struct GameConfig {
     static let gunBulletSpeed: TimeInterval = 0.2 // 子弹飞行时间
     static let gunStunDuration: TimeInterval = 3.0 // 命中眩晕时间
 
+    // MARK: - Shield
+    static let shieldDuration: TimeInterval = 3.0  // 盾牌持续时间
+    static let shieldHits: Int = 3                 // 可抵挡次数
+
     // MARK: - World / Camera
     static let worldScaleFactor: CGFloat = 3.0
     static let cameraLerp: CGFloat = 0.18
