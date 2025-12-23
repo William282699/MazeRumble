@@ -14,6 +14,12 @@ struct GameConfig {
     // MARK: - Items pickup
     static let itemPickupRange: CGFloat = 45   // 道具拾取范围
 
+    // MARK: - Bomb
+    static let bombThrowDistance: CGFloat = 150    // 炸弹投掷距离
+    static let bombFuseTime: TimeInterval = 1.5    // 炸弹引爆时间
+    static let bombExplosionRadius: CGFloat = 120  // 爆炸范围
+    static let bombStunDuration: TimeInterval = 3.0 // 眩晕时间
+
     // MARK: - Final dash
     static let finalDashTriggerDistance: CGFloat = 100
     static let finalDashDuration: TimeInterval = 5
