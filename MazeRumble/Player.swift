@@ -27,6 +27,12 @@ final class Player: SKShapeNode {
     private(set) var inventory: [Item.ItemType] = []
     let maxInventorySize = 2
 
+    // Shield
+    private(set) var hasShield: Bool = false
+    private var shieldHitsRemaining: Int = 0
+    private var shieldTimer: TimeInterval = 0
+    private var shieldEffect: SKShapeNode?
+
     init(index: Int, color: UIColor, isMainPlayer: Bool, appearance: AppearanceType = .normal) {
         self.index = index
         self.isMainPlayer = isMainPlayer
@@ -102,6 +108,41 @@ final class Player: SKShapeNode {
         }
     }
 
+    func activateShield(duration: TimeInterval, hits: Int) {
+        hasShield = true
+        shieldHitsRemaining = hits
+        shieldTimer = duration
+        addShieldEffect()
+    }
+
+    func updateShield(deltaTime: TimeInterval) {
+        guard hasShield else { return }
+        shieldTimer -= deltaTime
+        if shieldTimer <= 0 {
+            deactivateShield()
+        }
+    }
+
+    func absorbHit() -> Bool {
+        guard hasShield else { return false }
+        shieldHitsRemaining -= 1
+
+        // 盾牌闪烁效果
+        if let shield = shieldEffect {
+            let flash = SKAction.sequence([
+                SKAction.run { shield.strokeColor = .white },
+                SKAction.wait(forDuration: 0.1),
+                SKAction.run { shield.strokeColor = .cyan }
+            ])
+            shield.run(flash)
+        }
+
+        if shieldHitsRemaining <= 0 {
+            deactivateShield()
+        }
+        return true
+    }
+
     func canPickupItem() -> Bool {
         return inventory.count < maxInventorySize
     }
@@ -124,6 +165,10 @@ final class Player: SKShapeNode {
 
     func clearInventory() {
         inventory.removeAll()
+    }
+
+    func clearShield() {
+        deactivateShield()
     }
 
     var canMove: Bool {
@@ -233,6 +278,36 @@ final class Player: SKShapeNode {
         childNode(withName: "stunnedEffect")?.removeFromParent()
         childNode(withName: "downedEffect")?.removeFromParent()
         zRotation = 0
+    }
+
+    private func addShieldEffect() {
+        removeShieldEffect()
+
+        let shield = SKShapeNode(circleOfRadius: 32)
+        shield.fillColor = SKColor.cyan.withAlphaComponent(0.2)
+        shield.strokeColor = .cyan
+        shield.lineWidth = 3
+        shield.glowWidth = 5
+        shield.zPosition = 50
+        shield.name = "shieldEffect"
+        addChild(shield)
+        shieldEffect = shield
+
+        // 旋转动画
+        let rotate = SKAction.rotate(byAngle: .pi * 2, duration: 2.0)
+        shield.run(SKAction.repeatForever(rotate))
+    }
+
+    private func removeShieldEffect() {
+        shieldEffect?.removeFromParent()
+        shieldEffect = nil
+    }
+
+    private func deactivateShield() {
+        hasShield = false
+        shieldHitsRemaining = 0
+        shieldTimer = 0
+        removeShieldEffect()
     }
 
     private func addStunnedEffect() {
