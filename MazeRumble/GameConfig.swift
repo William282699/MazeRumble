@@ -77,6 +77,12 @@ struct GameConfig {
     static let sprintDuration: TimeInterval = 2.0    // 快跑持续时间
     static let sprintCooldown: TimeInterval = 5.0    // 快跑冷却
 
+    // MARK: - Hook
+    static let hookRange: CGFloat = 200           // 钩索射程
+    static let hookSpeed: TimeInterval = 0.25     // 钩索飞行时间
+    static let hookDownDuration: TimeInterval = 2.0 // 绊倒时间
+    static let hookPullForce: CGFloat = 400       // 把人拉过来的力度
+
     // MARK: - World / Camera
     static let worldScaleFactor: CGFloat = 3.0
     static let cameraLerp: CGFloat = 0.18
