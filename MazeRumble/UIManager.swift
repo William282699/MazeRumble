@@ -21,6 +21,10 @@ final class UIManager {
     private(set) var botProgressBar: SKSpriteNode?
     private(set) var timerLabel: SKLabelNode?
     private(set) var hintLabel: SKLabelNode?
+    private var itemSlot1: SKShapeNode?
+    private var itemSlot2: SKShapeNode?
+    private var itemLabel1: SKLabelNode?
+    private var itemLabel2: SKLabelNode?
 
     init(uiNode: SKNode) {
         self.uiNode = uiNode
@@ -103,6 +107,8 @@ final class UIManager {
         hint.zPosition = 300
         uiNode.addChild(hint)
         hintLabel = hint
+
+        createInventoryUI()
     }
 
     func layoutUI(for sceneSize: CGSize) {
@@ -123,6 +129,11 @@ final class UIManager {
 
         timerLabel?.position = CGPoint(x: 0, y: scoreY - 54)
         hintLabel?.position = CGPoint(x: 0, y: scoreY - 88)
+
+        // 道具栏位置（左上角）
+        let slotY = halfHeight - 50
+        itemSlot1?.position = CGPoint(x: -halfWidth + 40, y: slotY)
+        itemSlot2?.position = CGPoint(x: -halfWidth + 100, y: slotY)
     }
 
     func updateScoreBoard(coreHolder: Player?, players: [Player], coreHitCount: Int) {
@@ -168,5 +179,79 @@ final class UIManager {
             .fadeOut(withDuration: 0.35),
             .removeFromParent()
         ]))
+    }
+
+    func updateInventoryUI(inventory: [Item.ItemType]) {
+        // 槽位1
+        if inventory.count > 0 {
+            itemLabel1?.text = inventory[0].rawValue
+            itemSlot1?.fillColor = Item.color(for: inventory[0]).withAlphaComponent(0.7)
+        } else {
+            itemLabel1?.text = ""
+            itemSlot1?.fillColor = SKColor.black.withAlphaComponent(0.5)
+        }
+        
+        // 槽位2
+        if inventory.count > 1 {
+            itemLabel2?.text = inventory[1].rawValue
+            itemSlot2?.fillColor = Item.color(for: inventory[1]).withAlphaComponent(0.7)
+        } else {
+            itemLabel2?.text = ""
+            itemSlot2?.fillColor = SKColor.black.withAlphaComponent(0.5)
+        }
+    }
+
+    func getItemSlotPressed(at location: CGPoint) -> Int? {
+        if let slot1 = itemSlot1, slot1.contains(location) {
+            return 0
+        }
+        if let slot2 = itemSlot2, slot2.contains(location) {
+            return 1
+        }
+        return nil
+    }
+
+    private func createInventoryUI() {
+        guard let uiNode else { return }
+        
+        // 道具槽1（左上角位置，之后会在layoutUI中调整）
+        let slot1 = SKShapeNode(rectOf: CGSize(width: 50, height: 50), cornerRadius: 8)
+        slot1.fillColor = SKColor.black.withAlphaComponent(0.5)
+        slot1.strokeColor = .white
+        slot1.lineWidth = 2
+        slot1.zPosition = 300
+        slot1.name = "itemSlot1"
+        uiNode.addChild(slot1)
+        itemSlot1 = slot1
+        
+        let label1 = SKLabelNode(text: "")
+        label1.fontSize = 24
+        label1.fontName = "AvenirNext-Bold"
+        label1.fontColor = .white
+        label1.verticalAlignmentMode = .center
+        label1.horizontalAlignmentMode = .center
+        label1.zPosition = 301
+        slot1.addChild(label1)
+        itemLabel1 = label1
+        
+        // 道具槽2
+        let slot2 = SKShapeNode(rectOf: CGSize(width: 50, height: 50), cornerRadius: 8)
+        slot2.fillColor = SKColor.black.withAlphaComponent(0.5)
+        slot2.strokeColor = .white
+        slot2.lineWidth = 2
+        slot2.zPosition = 300
+        slot2.name = "itemSlot2"
+        uiNode.addChild(slot2)
+        itemSlot2 = slot2
+        
+        let label2 = SKLabelNode(text: "")
+        label2.fontSize = 24
+        label2.fontName = "AvenirNext-Bold"
+        label2.fontColor = .white
+        label2.verticalAlignmentMode = .center
+        label2.horizontalAlignmentMode = .center
+        label2.zPosition = 301
+        slot2.addChild(label2)
+        itemLabel2 = label2
     }
 }
