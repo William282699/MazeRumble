@@ -1004,8 +1004,117 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func useGun(by player: Player) {
-        // TODO: 枪
-        showMessage("枪功能待实现", color: .darkGray)
+        // 获取射击方向
+        var direction = inputController?.currentDirection ?? .zero
+        if direction.dx == 0 && direction.dy == 0 {
+            direction = CGVector(dx: 0, dy: 1)
+        }
+        let length = hypot(direction.dx, direction.dy)
+        let normalizedDir = CGVector(dx: direction.dx / length, dy: direction.dy / length)
+
+        // 计算子弹终点
+        let endX = player.position.x + normalizedDir.dx * GameConfig.gunRange
+        let endY = player.position.y + normalizedDir.dy * GameConfig.gunRange
+        let endPos = CGPoint(x: endX, y: endY)
+
+        // 创建子弹
+        let bullet = SKShapeNode(circleOfRadius: 5)
+        bullet.fillColor = .yellow
+        bullet.strokeColor = .orange
+        bullet.lineWidth = 2
+        bullet.position = player.position
+        bullet.zPosition = 20
+        bullet.name = "bullet"
+
+        // 添加拖尾效果
+        bullet.glowWidth = 3
+
+        worldNode.addChild(bullet)
+
+        // 记录起始位置
+        let startPos = player.position
+        var hasHit = false
+
+        // 子弹飞行 + 每帧检测命中
+        let flyAndCheck = SKAction.customAction(withDuration: GameConfig.gunBulletSpeed) { [weak self, weak bullet] node, elapsedTime in
+            guard let self = self, let bulletNode = bullet, !hasHit else { return }
+
+            // 计算当前位置（线性插值，子弹是直线快速飞行）
+            let progress = elapsedTime / CGFloat(GameConfig.gunBulletSpeed)
+            let currentX = startPos.x + (endPos.x - startPos.x) * progress
+            let currentY = startPos.y + (endPos.y - startPos.y) * progress
+            bulletNode.position = CGPoint(x: currentX, y: currentY)
+
+            // 检测命中
+            for target in self.players where target != player {
+                let dx = target.position.x - bulletNode.position.x
+                let dy = target.position.y - bulletNode.position.y
+                let distance = hypot(dx, dy)
+
+                if distance < 35 {  // 命中判定
+                    hasHit = true
+
+                    // 命中：眩晕目标
+                    target.setState(.stunned, duration: GameConfig.gunStunDuration)
+
+                    // 命中特效
+                    self.showGunHitEffect(at: target.position)
+                    self.showMessage("命中！", color: .yellow)
+
+                    // 移除子弹
+                    bulletNode.removeFromParent()
+                    return
+                }
+            }
+        }
+
+        // 未命中时移除子弹
+        let removeIfMissed = SKAction.run { [weak bullet] in
+            guard !hasHit else { return }
+            bullet?.removeFromParent()
+        }
+
+        // 组合动作
+        bullet.run(SKAction.sequence([flyAndCheck, removeIfMissed]))
+
+        // 枪口火焰效果
+        showMuzzleFlash(at: player.position, direction: normalizedDir)
+    }
+
+    // 添加枪口火焰效果
+    private func showMuzzleFlash(at position: CGPoint, direction: CGVector) {
+        let flash = SKShapeNode(circleOfRadius: 12)
+        flash.fillColor = .orange
+        flash.strokeColor = .yellow
+        flash.lineWidth = 2
+        flash.position = CGPoint(x: position.x + direction.dx * 25,
+                                  y: position.y + direction.dy * 25)
+        flash.zPosition = 21
+        flash.glowWidth = 5
+        worldNode.addChild(flash)
+
+        let fadeOut = SKAction.sequence([
+            SKAction.wait(forDuration: 0.05),
+            SKAction.fadeOut(withDuration: 0.1),
+            SKAction.removeFromParent()
+        ])
+        flash.run(fadeOut)
+    }
+
+    // 添加命中特效
+    private func showGunHitEffect(at position: CGPoint) {
+        let hit = SKShapeNode(circleOfRadius: 8)
+        hit.fillColor = .white
+        hit.strokeColor = .yellow
+        hit.lineWidth = 2
+        hit.position = position
+        hit.zPosition = 22
+        worldNode.addChild(hit)
+
+        let expand = SKAction.scale(to: 3.0, duration: 0.15)
+        let fadeOut = SKAction.fadeOut(withDuration: 0.15)
+        let remove = SKAction.removeFromParent()
+        hit.run(SKAction.sequence([SKAction.group([expand, fadeOut]), remove]))
     }
 
     private func useShield(by player: Player) {

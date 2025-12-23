@@ -83,6 +83,11 @@ struct GameConfig {
     static let hookDownDuration: TimeInterval = 2.0 // 绊倒时间
     static let hookPullForce: CGFloat = 400       // 把人拉过来的力度
 
+    // MARK: - Gun
+    static let gunRange: CGFloat = 350            // 射程
+    static let gunBulletSpeed: TimeInterval = 0.2 // 子弹飞行时间
+    static let gunStunDuration: TimeInterval = 3.0 // 命中眩晕时间
+
     // MARK: - World / Camera
     static let worldScaleFactor: CGFloat = 3.0
     static let cameraLerp: CGFloat = 0.18
