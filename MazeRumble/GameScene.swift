@@ -159,7 +159,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let touch = touches.first else { return }
         let loc = uiNode.convert(touch.location(in: self), from: self)
 
-        // 先检测动作按钮
+        // 先检测道具槽点击
+        if let slotIndex = uiManager?.getItemSlotPressed(at: loc) {
+            useItemFromSlot(slotIndex)
+            isActionButtonTouch = true  // 标记这是按钮点击
+            return
+        }
+
+        // 再检测动作按钮
         if let actionType = inputController?.getActionButtonPressed(at: loc) {
             isActionButtonTouch = true  // 标记这是按钮点击
             performAction(actionType)
@@ -362,6 +369,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                             players: players,
                             coreHitCount: coreHitCount,
                             roundTimeRemaining: roundTimeRemaining)
+        if let me = players.first {
+            uiManager?.updateInventoryUI(inventory: me.inventory)
+        }
     }
 
     // MARK: - 你（0号玩家）移动：目标速度插值
@@ -660,6 +670,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         resetEntitiesForRound()
         uiManager?.updateTimerLabel(roundTimeRemaining: roundTimeRemaining)
         uiManager?.updateScoreBoard(coreHolder: coreHolder, players: players, coreHitCount: coreHitCount)
+        if let me = players.first {
+            uiManager?.updateInventoryUI(inventory: me.inventory)
+        }
         focusCameraInstantly()
         spawnTestItems()
     }
@@ -715,6 +728,69 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // MARK: - UI helpers
+    private func useItemFromSlot(_ index: Int) {
+        guard let me = players.first, me.canAct else { return }
+        guard let itemType = me.useItem(at: index) else { return }
+
+        // 暂时只显示使用了什么道具
+        showMessage("使用 \(itemType.rawValue)！", color: Item.color(for: itemType))
+
+        // TODO: 后续实现具体道具效果
+        switch itemType {
+        case .stick:
+            useStick(by: me)
+        case .bomb:
+            useBomb(by: me)
+        case .hook:
+            useHook(by: me)
+        case .gun:
+            useGun(by: me)
+        case .shield:
+            useShield(by: me)
+        }
+
+        uiManager?.updateInventoryUI(inventory: me.inventory)
+    }
+
+    private func useStick(by player: Player) {
+        // 棒子：近战攻击，范围内敌人眩晕3秒
+        var direction = inputController?.currentDirection ?? .zero
+        if direction.dx == 0 && direction.dy == 0 {
+            direction = CGVector(dx: 0, dy: 1)
+        }
+
+        for target in players where target != player {
+            let dx = target.position.x - player.position.x
+            let dy = target.position.y - player.position.y
+            let distance = hypot(dx, dy)
+
+            if distance < 70 {  // 棒子攻击范围
+                target.setState(.stunned, duration: 3.0)
+                showMessage("击晕！", color: .yellow)
+            }
+        }
+    }
+
+    private func useBomb(by player: Player) {
+        // TODO: 抛出炸弹
+        showMessage("炸弹功能待实现", color: .red)
+    }
+
+    private func useHook(by player: Player) {
+        // TODO: 钩索
+        showMessage("钩索功能待实现", color: .gray)
+    }
+
+    private func useGun(by player: Player) {
+        // TODO: 枪
+        showMessage("枪功能待实现", color: .darkGray)
+    }
+
+    private func useShield(by player: Player) {
+        // TODO: 盾牌
+        showMessage("盾牌功能待实现", color: .blue)
+    }
+
     private func showMessage(_ text: String, color: UIColor) {
         uiManager?.showMessage(text, color: color, sceneSize: size)
     }
