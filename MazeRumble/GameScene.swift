@@ -772,8 +772,89 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func useBomb(by player: Player) {
-        // TODO: 抛出炸弹
-        showMessage("炸弹功能待实现", color: .red)
+        // 获取投掷方向
+        var direction = inputController?.currentDirection ?? .zero
+        if direction.dx == 0 && direction.dy == 0 {
+            direction = CGVector(dx: 0, dy: 1)
+        }
+        let length = hypot(direction.dx, direction.dy)
+        let normalizedDir = CGVector(dx: direction.dx / length, dy: direction.dy / length)
+
+        // 计算炸弹落点
+        let targetX = player.position.x + normalizedDir.dx * GameConfig.bombThrowDistance
+        let targetY = player.position.y + normalizedDir.dy * GameConfig.bombThrowDistance
+        let targetPos = CGPoint(x: targetX, y: targetY)
+
+        // 创建炸弹节点
+        let bomb = SKShapeNode(circleOfRadius: 12)
+        bomb.fillColor = .red
+        bomb.strokeColor = .black
+        bomb.lineWidth = 2
+        bomb.position = player.position
+        bomb.zPosition = 20
+        bomb.name = "bomb"
+        worldNode.addChild(bomb)
+
+        // 炸弹飞行动画
+        let flyAction = SKAction.move(to: targetPos, duration: 0.3)
+        flyAction.timingMode = .easeOut
+
+        // 落地后闪烁
+        let blink = SKAction.sequence([
+            SKAction.run { bomb.fillColor = .white },
+            SKAction.wait(forDuration: 0.15),
+            SKAction.run { bomb.fillColor = .red },
+            SKAction.wait(forDuration: 0.15)
+        ])
+        let blinkRepeat = SKAction.repeat(blink, count: Int(GameConfig.bombFuseTime / 0.3))
+
+        // 爆炸
+        let explode = SKAction.run { [weak self] in
+            self?.explodeBomb(at: targetPos)
+            bomb.removeFromParent()
+        }
+
+        // 组合动画
+        let sequence = SKAction.sequence([flyAction, blinkRepeat, explode])
+        bomb.run(sequence)
+    }
+
+    // 添加爆炸方法
+    private func explodeBomb(at position: CGPoint) {
+        // 爆炸视觉效果
+        let explosion = SKShapeNode(circleOfRadius: 10)
+        explosion.fillColor = .orange
+        explosion.strokeColor = .yellow
+        explosion.lineWidth = 3
+        explosion.position = position
+        explosion.zPosition = 25
+        worldNode.addChild(explosion)
+
+        // 爆炸扩散动画
+        let expand = SKAction.scale(to: GameConfig.bombExplosionRadius / 10, duration: 0.2)
+        let fadeOut = SKAction.fadeOut(withDuration: 0.3)
+        let remove = SKAction.removeFromParent()
+        explosion.run(SKAction.sequence([expand, fadeOut, remove]))
+
+        // 范围内所有玩家眩晕
+        for target in players {
+            let dx = target.position.x - position.x
+            let dy = target.position.y - position.y
+            let distance = hypot(dx, dy)
+
+            if distance < GameConfig.bombExplosionRadius {
+                target.setState(.stunned, duration: GameConfig.bombStunDuration)
+
+                // 给一个击退效果
+                if distance > 0 {
+                    let knockbackDir = CGVector(dx: dx / distance, dy: dy / distance)
+                    let knockback = CGVector(dx: knockbackDir.dx * 300, dy: knockbackDir.dy * 300)
+                    target.physicsBody?.applyImpulse(knockback)
+                }
+            }
+        }
+
+        showMessage("爆炸！", color: .orange)
     }
 
     private func useHook(by player: Player) {
