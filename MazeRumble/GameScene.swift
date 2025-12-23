@@ -858,8 +858,115 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func useHook(by player: Player) {
-        // TODO: 钩索
-        showMessage("钩索功能待实现", color: .gray)
+        // 获取射出方向
+        var direction = inputController?.currentDirection ?? .zero
+        if direction.dx == 0 && direction.dy == 0 {
+            direction = CGVector(dx: 0, dy: 1)
+        }
+        let length = hypot(direction.dx, direction.dy)
+        let normalizedDir = CGVector(dx: direction.dx / length, dy: direction.dy / length)
+        
+        // 计算钩索终点
+        let endX = player.position.x + normalizedDir.dx * GameConfig.hookRange
+        let endY = player.position.y + normalizedDir.dy * GameConfig.hookRange
+        let endPos = CGPoint(x: endX, y: endY)
+        
+        // 创建钩子头部
+        let hook = SKShapeNode(circleOfRadius: 8)
+        hook.fillColor = .gray
+        hook.strokeColor = .darkGray
+        hook.lineWidth = 2
+        hook.position = player.position
+        hook.zPosition = 20
+        hook.name = "hook"
+        worldNode.addChild(hook)
+        
+        // 创建绳索（线条）
+        let rope = SKShapeNode()
+        rope.strokeColor = .brown
+        rope.lineWidth = 3
+        rope.zPosition = 19
+        rope.name = "rope"
+        worldNode.addChild(rope)
+        
+        // 记录发射者位置用于绳索绘制
+        let startPos = player.position
+        
+        // 更新绳索的动作
+        let updateRope = SKAction.customAction(withDuration: GameConfig.hookSpeed) { [weak rope] node, time in
+            guard let hookNode = node as? SKShapeNode, let ropeNode = rope else { return }
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: startPos.x - hookNode.position.x, y: startPos.y - hookNode.position.y))
+            path.addLine(to: .zero)
+            ropeNode.path = path
+            ropeNode.position = hookNode.position
+        }
+        
+        // 钩子飞出
+        let flyOut = SKAction.move(to: endPos, duration: GameConfig.hookSpeed)
+        flyOut.timingMode = .easeOut
+        
+        // 检测命中并收回
+        let checkHit = SKAction.run { [weak self, weak hook, weak rope] in
+            guard let self = self, let hookNode = hook else { return }
+            
+            var hitTarget: Player? = nil
+            
+            // 检测钩子路径上的敌人
+            for target in self.players where target != player {
+                let dx = target.position.x - hookNode.position.x
+                let dy = target.position.y - hookNode.position.y
+                let distance = hypot(dx, dy)
+                
+                if distance < 40 {  // 命中判定
+                    hitTarget = target
+                    break
+                }
+            }
+            
+            if let target = hitTarget {
+                // 命中：绊倒目标并拉过来
+                target.setState(.downed, duration: GameConfig.hookDownDuration)
+                
+                // 把目标拉向玩家
+                let pullDx = player.position.x - target.position.x
+                let pullDy = player.position.y - target.position.y
+                let pullDist = hypot(pullDx, pullDy)
+                if pullDist > 0 {
+                    let pullDir = CGVector(dx: pullDx / pullDist * GameConfig.hookPullForce,
+                                           dy: pullDy / pullDist * GameConfig.hookPullForce)
+                    target.physicsBody?.applyImpulse(pullDir)
+                }
+                
+                self.showMessage("钩中！", color: .brown)
+            }
+            
+            // 收回钩子动画
+            let retract = SKAction.move(to: startPos, duration: GameConfig.hookSpeed * 0.7)
+            retract.timingMode = .easeIn
+            let remove = SKAction.run {
+                hookNode.removeFromParent()
+                rope?.removeFromParent()
+            }
+            hookNode.run(SKAction.sequence([retract, remove]))
+            
+            // 绳索跟随收回
+            let updateRopeBack = SKAction.customAction(withDuration: GameConfig.hookSpeed * 0.7) { [weak rope] node, _ in
+                guard let hookNode = node as? SKShapeNode, let ropeNode = rope else { return }
+                let path = CGMutablePath()
+                path.move(to: CGPoint(x: startPos.x - hookNode.position.x, y: startPos.y - hookNode.position.y))
+                path.addLine(to: .zero)
+                ropeNode.path = path
+                ropeNode.position = hookNode.position
+            }
+            hookNode.run(updateRopeBack)
+        }
+        
+        // 组合动作
+        hook.run(SKAction.sequence([
+            SKAction.group([flyOut, updateRope]),
+            checkHit
+        ]))
     }
 
     private func useGun(by player: Player) {
