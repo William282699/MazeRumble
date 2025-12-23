@@ -689,7 +689,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         for (index, type) in testTypes.enumerated() {
             let item = Item(type: type)
             let angle = CGFloat(index) * (2 * .pi / CGFloat(testTypes.count))
-            let radius: CGFloat = 200
+            let radius: CGFloat = 350
             item.position = CGPoint(x: center.x + cos(angle) * radius,
                                     y: center.y + sin(angle) * radius)
             item.zPosition = 15
