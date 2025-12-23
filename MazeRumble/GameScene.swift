@@ -340,6 +340,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         for player in players {
             player.updateState(deltaTime: dt)
             player.updateSprint(deltaTime: dt)
+            player.updateShield(deltaTime: dt)
         }
         updatePlayerMovement()
         if let c = core {
@@ -720,6 +721,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             p.childNode(withName: "glow")?.removeFromParent()
             p.childNode(withName: "finalDashGlow")?.removeFromParent()
             p.clearInventory()
+            p.clearShield()
             if let body = p.physicsBody {
                 body.velocity = .zero
                 body.angularVelocity = 0
@@ -765,8 +767,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let distance = hypot(dx, dy)
 
             if distance < 70 {  // 棒子攻击范围
-                target.setState(.stunned, duration: 3.0)
-                showMessage("击晕！", color: .yellow)
+                if target.absorbHit() {
+                    showMessage("被格挡！", color: .cyan)
+                } else {
+                    target.setState(.stunned, duration: 3.0)
+                    showMessage("击晕！", color: .yellow)
+                }
             }
         }
     }
@@ -843,7 +849,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let distance = hypot(dx, dy)
 
             if distance < GameConfig.bombExplosionRadius {
-                target.setState(.stunned, duration: GameConfig.bombStunDuration)
+                if target.absorbHit() {
+                    // 盾牌吸收，不眩晕但仍被击退
+                } else {
+                    target.setState(.stunned, duration: GameConfig.bombStunDuration)
+                }
 
                 // 给一个击退效果
                 if distance > 0 {
@@ -922,20 +932,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 if distance < 50 {  // 命中判定范围
                     hasHit = true
                     
-                    // 命中：绊倒目标并拉过来
-                    target.setState(.downed, duration: GameConfig.hookDownDuration)
-                    
-                    // 把目标拉向玩家
-                    let pullDx = player.position.x - target.position.x
-                    let pullDy = player.position.y - target.position.y
-                    let pullDist = hypot(pullDx, pullDy)
-                    if pullDist > 0 {
-                        let pullDir = CGVector(dx: pullDx / pullDist * GameConfig.hookPullForce,
-                                               dy: pullDy / pullDist * GameConfig.hookPullForce)
-                        target.physicsBody?.applyImpulse(pullDir)
+                    if target.absorbHit() {
+                        self.showMessage("被格挡！", color: .cyan)
+                        // 被格挡，不继续拉人
+                    } else {
+                        target.setState(.downed, duration: GameConfig.hookDownDuration)
+                        // 把目标拉向玩家
+                        let pullDx = player.position.x - target.position.x
+                        let pullDy = player.position.y - target.position.y
+                        let pullDist = hypot(pullDx, pullDy)
+                        if pullDist > 0 {
+                            let pullDir = CGVector(dx: pullDx / pullDist * GameConfig.hookPullForce,
+                                                   dy: pullDy / pullDist * GameConfig.hookPullForce)
+                            target.physicsBody?.applyImpulse(pullDir)
+                        }
+                        self.showMessage("钩中！", color: .brown)
                     }
-                    
-                    self.showMessage("钩中！", color: .brown)
                     
                     // 立即开始收回
                     hookNode.removeAllActions()
@@ -1054,12 +1066,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 if distance < 35 {  // 命中判定
                     hasHit = true
 
-                    // 命中：眩晕目标
-                    target.setState(.stunned, duration: GameConfig.gunStunDuration)
+                    if target.absorbHit() {
+                        self.showMessage("被格挡！", color: .cyan)
+                    } else {
+                        target.setState(.stunned, duration: GameConfig.gunStunDuration)
+                        self.showMessage("命中！", color: .yellow)
+                    }
 
                     // 命中特效
                     self.showGunHitEffect(at: target.position)
-                    self.showMessage("命中！", color: .yellow)
 
                     // 移除子弹
                     bulletNode.removeFromParent()
@@ -1118,8 +1133,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func useShield(by player: Player) {
-        // TODO: 盾牌
-        showMessage("盾牌功能待实现", color: .blue)
+        guard !player.hasShield else {
+            showMessage("盾牌已激活！", color: .cyan)
+            return
+        }
+
+        player.activateShield(duration: GameConfig.shieldDuration, hits: GameConfig.shieldHits)
+        showMessage("盾牌激活！(\(GameConfig.shieldHits)次)", color: .cyan)
     }
 
     private func showMessage(_ text: String, color: UIColor) {
