@@ -872,7 +872,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let endPos = CGPoint(x: endX, y: endY)
         
         // 创建钩子头部
-        let hook = SKShapeNode(circleOfRadius: 8)
+        let hook = SKShapeNode(circleOfRadius: 10)
         hook.fillColor = .gray
         hook.strokeColor = .darkGray
         hook.lineWidth = 2
@@ -892,8 +892,103 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // 记录发射者位置用于绳索绘制
         let startPos = player.position
         
-        // 更新绳索的动作
-        let updateRope = SKAction.customAction(withDuration: GameConfig.hookSpeed) { [weak rope] node, time in
+        // 用于标记是否已命中
+        var hasHit = false
+        
+        // 飞行过程中每帧检测命中 + 更新绳索
+        let flyAndCheck = SKAction.customAction(withDuration: GameConfig.hookSpeed) { [weak self, weak hook, weak rope] node, elapsedTime in
+            guard let self = self, let hookNode = hook, let ropeNode = rope, !hasHit else { return }
+            
+            // 计算当前位置（手动插值，因为 customAction 会覆盖 move）
+            let progress = elapsedTime / CGFloat(GameConfig.hookSpeed)
+            let easeOutProgress = 1 - pow(1 - progress, 2)  // easeOut 曲线
+            let currentX = startPos.x + (endPos.x - startPos.x) * easeOutProgress
+            let currentY = startPos.y + (endPos.y - startPos.y) * easeOutProgress
+            hookNode.position = CGPoint(x: currentX, y: currentY)
+            
+            // 更新绳索
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: startPos.x - hookNode.position.x, y: startPos.y - hookNode.position.y))
+            path.addLine(to: .zero)
+            ropeNode.path = path
+            ropeNode.position = hookNode.position
+            
+            // 检测命中（每帧检测）
+            for target in self.players where target != player {
+                let dx = target.position.x - hookNode.position.x
+                let dy = target.position.y - hookNode.position.y
+                let distance = hypot(dx, dy)
+                
+                if distance < 50 {  // 命中判定范围
+                    hasHit = true
+                    
+                    // 命中：绊倒目标并拉过来
+                    target.setState(.downed, duration: GameConfig.hookDownDuration)
+                    
+                    // 把目标拉向玩家
+                    let pullDx = player.position.x - target.position.x
+                    let pullDy = player.position.y - target.position.y
+                    let pullDist = hypot(pullDx, pullDy)
+                    if pullDist > 0 {
+                        let pullDir = CGVector(dx: pullDx / pullDist * GameConfig.hookPullForce,
+                                               dy: pullDy / pullDist * GameConfig.hookPullForce)
+                        target.physicsBody?.applyImpulse(pullDir)
+                    }
+                    
+                    self.showMessage("钩中！", color: .brown)
+                    
+                    // 立即开始收回
+                    hookNode.removeAllActions()
+                    self.retractHook(hook: hookNode, rope: ropeNode, to: startPos)
+                    return
+                }
+            }
+        }
+        
+        // 未命中时的收回
+        let retractIfMissed = SKAction.run { [weak self, weak hook, weak rope] in
+            guard let self = self, let hookNode = hook, let ropeNode = rope, !hasHit else { return }
+            self.retractHook(hook: hookNode, rope: ropeNode, to: startPos)
+        }
+        
+        // 组合动作
+        hook.run(SKAction.sequence([flyAndCheck, retractIfMissed]))
+    }
+    
+    // 钩索收回辅助方法
+    private func retractHook(hook: SKShapeNode, rope: SKShapeNode, to startPos: CGPoint) {
+        let retractDuration = GameConfig.hookSpeed * 0.7
+        
+        let retractAction = SKAction.customAction(withDuration: retractDuration) { [weak rope] node, elapsedTime in
+            guard let hookNode = node as? SKShapeNode, let ropeNode = rope else { return }
+            
+            let startRetractPos = hookNode.position
+            let progress = elapsedTime / CGFloat(retractDuration)
+            let easeInProgress = progress * progress  // easeIn 曲线
+            
+            // 这里需要记录收回开始位置，简化处理：直接移动
+            let currentX = hookNode.position.x + (startPos.x - hookNode.position.x) * easeInProgress * 0.1
+            let currentY = hookNode.position.y + (startPos.y - hookNode.position.y) * easeInProgress * 0.1
+            hookNode.position = CGPoint(x: currentX, y: currentY)
+            
+            // 更新绳索
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: startPos.x - hookNode.position.x, y: startPos.y - hookNode.position.y))
+            path.addLine(to: .zero)
+            ropeNode.path = path
+            ropeNode.position = hookNode.position
+        }
+        
+        let moveBack = SKAction.move(to: startPos, duration: retractDuration)
+        moveBack.timingMode = .easeIn
+        
+        let remove = SKAction.run { [weak rope] in
+            hook.removeFromParent()
+            rope?.removeFromParent()
+        }
+        
+        // 用 move 来收回，同时更新绳索
+        let updateRopeBack = SKAction.customAction(withDuration: retractDuration) { [weak rope] node, _ in
             guard let hookNode = node as? SKShapeNode, let ropeNode = rope else { return }
             let path = CGMutablePath()
             path.move(to: CGPoint(x: startPos.x - hookNode.position.x, y: startPos.y - hookNode.position.y))
@@ -902,70 +997,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             ropeNode.position = hookNode.position
         }
         
-        // 钩子飞出
-        let flyOut = SKAction.move(to: endPos, duration: GameConfig.hookSpeed)
-        flyOut.timingMode = .easeOut
-        
-        // 检测命中并收回
-        let checkHit = SKAction.run { [weak self, weak hook, weak rope] in
-            guard let self = self, let hookNode = hook else { return }
-            
-            var hitTarget: Player? = nil
-            
-            // 检测钩子路径上的敌人
-            for target in self.players where target != player {
-                let dx = target.position.x - hookNode.position.x
-                let dy = target.position.y - hookNode.position.y
-                let distance = hypot(dx, dy)
-                
-                if distance < 40 {  // 命中判定
-                    hitTarget = target
-                    break
-                }
-            }
-            
-            if let target = hitTarget {
-                // 命中：绊倒目标并拉过来
-                target.setState(.downed, duration: GameConfig.hookDownDuration)
-                
-                // 把目标拉向玩家
-                let pullDx = player.position.x - target.position.x
-                let pullDy = player.position.y - target.position.y
-                let pullDist = hypot(pullDx, pullDy)
-                if pullDist > 0 {
-                    let pullDir = CGVector(dx: pullDx / pullDist * GameConfig.hookPullForce,
-                                           dy: pullDy / pullDist * GameConfig.hookPullForce)
-                    target.physicsBody?.applyImpulse(pullDir)
-                }
-                
-                self.showMessage("钩中！", color: .brown)
-            }
-            
-            // 收回钩子动画
-            let retract = SKAction.move(to: startPos, duration: GameConfig.hookSpeed * 0.7)
-            retract.timingMode = .easeIn
-            let remove = SKAction.run {
-                hookNode.removeFromParent()
-                rope?.removeFromParent()
-            }
-            hookNode.run(SKAction.sequence([retract, remove]))
-            
-            // 绳索跟随收回
-            let updateRopeBack = SKAction.customAction(withDuration: GameConfig.hookSpeed * 0.7) { [weak rope] node, _ in
-                guard let hookNode = node as? SKShapeNode, let ropeNode = rope else { return }
-                let path = CGMutablePath()
-                path.move(to: CGPoint(x: startPos.x - hookNode.position.x, y: startPos.y - hookNode.position.y))
-                path.addLine(to: .zero)
-                ropeNode.path = path
-                ropeNode.position = hookNode.position
-            }
-            hookNode.run(updateRopeBack)
-        }
-        
-        // 组合动作
         hook.run(SKAction.sequence([
-            SKAction.group([flyOut, updateRope]),
-            checkHit
+            SKAction.group([moveBack, updateRopeBack]),
+            remove
         ]))
     }
 
