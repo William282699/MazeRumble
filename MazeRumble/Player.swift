@@ -33,6 +33,11 @@ final class Player: SKShapeNode {
     private var shieldTimer: TimeInterval = 0
     private var shieldEffect: SKShapeNode?
 
+    // Hiding
+    private(set) var isHiding: Bool = false
+    private(set) var hasAmbushBonus: Bool = false
+    private var ambushBonusTimer: TimeInterval = 0
+
     init(index: Int, color: UIColor, isMainPlayer: Bool, appearance: AppearanceType = .normal) {
         self.index = index
         self.isMainPlayer = isMainPlayer
@@ -121,6 +126,38 @@ final class Player: SKShapeNode {
         if shieldTimer <= 0 {
             deactivateShield()
         }
+    }
+
+    func enterHiding() {
+        guard !isHiding else { return }
+        isHiding = true
+        // 隐藏时变透明（只有自己能看到淡淡的轮廓）
+        alpha = GameConfig.hidingSpotAlpha
+    }
+
+    func exitHiding() {
+        guard isHiding else { return }
+        isHiding = false
+        alpha = 1.0
+        // 获得伏击加成
+        hasAmbushBonus = true
+        ambushBonusTimer = GameConfig.ambushBonusDuration
+    }
+
+    func updateAmbushBonus(deltaTime: TimeInterval) {
+        guard hasAmbushBonus else { return }
+        ambushBonusTimer -= deltaTime
+        if ambushBonusTimer <= 0 {
+            ambushBonusTimer = 0
+            hasAmbushBonus = false
+        }
+    }
+
+    func clearHidingState() {
+        isHiding = false
+        hasAmbushBonus = false
+        ambushBonusTimer = 0
+        alpha = 1.0
     }
 
     func absorbHit() -> Bool {
