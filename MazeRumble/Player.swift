@@ -153,6 +153,11 @@ final class Player: SKShapeNode {
         }
     }
 
+    func clearAmbushBonus() {
+        hasAmbushBonus = false
+        ambushBonusTimer = 0
+    }
+
     func clearHidingState() {
         isHiding = false
         hasAmbushBonus = false
