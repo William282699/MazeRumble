@@ -17,6 +17,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - 游戏对象
     private var players: [Player] = []               // 8个玩家（0号是你）
+    private var hidingSpots: [HidingSpot] = []
     private var items: [Item] = []
     private var spawnPositions: [CGPoint] = []       // 出生点
     private var core: SKShapeNode?                   // 核心物品
@@ -76,6 +77,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         mapManager?.createGates()
         createCore()
         createPlayers()
+        createHidingSpots()
         inputController?.createJoystick()
         inputController?.createActionButtons()
         uiManager?.createUI()
@@ -149,6 +151,31 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
             worldNode.addChild(player)
             players.append(player)
+        }
+    }
+
+    private func createHidingSpots() {
+        // 清除旧的
+        hidingSpots.forEach { $0.removeFromParent() }
+        hidingSpots.removeAll()
+
+        // 在地图上创建几个隐藏点（测试用，后续从地图数据读取）
+        let center = worldCenter
+        let spotPositions: [CGPoint] = [
+            CGPoint(x: center.x - 300, y: center.y + 200),
+            CGPoint(x: center.x + 300, y: center.y + 200),
+            CGPoint(x: center.x - 300, y: center.y - 200),
+            CGPoint(x: center.x + 300, y: center.y - 200),
+            CGPoint(x: center.x, y: center.y + 350),
+            CGPoint(x: center.x, y: center.y - 350),
+        ]
+
+        for pos in spotPositions {
+            let spot = HidingSpot()
+            spot.position = pos
+            spot.zPosition = 5
+            worldNode.addChild(spot)
+            hidingSpots.append(spot)
         }
     }
 
@@ -340,8 +367,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         for player in players {
             player.updateState(deltaTime: dt)
             player.updateSprint(deltaTime: dt)
+            player.updateAmbushBonus(deltaTime: dt)
             player.updateShield(deltaTime: dt)
         }
+        updateHidingSpots()
         updatePlayerMovement()
         if let c = core {
             botAI.coreHolder = coreHolder
@@ -362,6 +391,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         roundTimeRemaining = max(0, roundTimeRemaining - delta)
         if roundTimeRemaining <= 0 {
             handleTimeUp()
+        }
+    }
+
+    private func updateHidingSpots() {
+        for spot in hidingSpots {
+            for player in players {
+                if spot.containsPlayer(player) {
+                    if !player.isHiding {
+                        spot.playerEnter(player)
+                        player.enterHiding()
+                    }
+                } else if player.isHiding && spot.hiddenPlayers.contains(where: { $0 === player }) {
+                    spot.playerExit(player)
+                    player.exitHiding()
+                }
+            }
         }
     }
 
@@ -715,6 +760,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             c.run(.repeatForever(.rotate(byAngle: .pi * 2, duration: 2.0)))
         }
 
+        for spot in hidingSpots {
+            spot.reset()
+        }
+
         for (idx, p) in players.enumerated() {
             if idx < spawnPositions.count { p.position = spawnPositions[idx] }
             p.setScale(1.0)
@@ -722,6 +771,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             p.childNode(withName: "finalDashGlow")?.removeFromParent()
             p.clearInventory()
             p.clearShield()
+            p.clearHidingState()
             if let body = p.physicsBody {
                 body.velocity = .zero
                 body.angularVelocity = 0
