@@ -285,11 +285,16 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let length = hypot(tackleDirection.dx, tackleDirection.dy)
         let normalizedDir = CGVector(dx: tackleDirection.dx / length, dy: tackleDirection.dy / length)
 
+        // 伏击加成
+        let forceMultiplier: CGFloat = player.hasAmbushBonus ? GameConfig.ambushBonusMultiplier : 1.0
+        let downDuration: TimeInterval = player.hasAmbushBonus ? 2.0 : GameConfig.tackleDownDuration
+
         // 自己先冲出去一段距离
         let selfDash = CGVector(dx: normalizedDir.dx * GameConfig.tackleForce * 0.8,
                                 dy: normalizedDir.dy * GameConfig.tackleForce * 0.8)
         player.physicsBody?.applyImpulse(selfDash)
 
+        var didHit = false
         // 检测范围内的敌人并绊倒
         for target in players where target != player {
             let dx = target.position.x - player.position.x
@@ -298,15 +303,24 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
 
             if distance < GameConfig.tackleRange {
                 // 绊倒目标（进入倒地状态）
-                target.setState(.downed, duration: GameConfig.tackleDownDuration)
+                target.setState(.downed, duration: downDuration)
 
                 // 也给目标一个小推力
-                let pushVector = CGVector(dx: normalizedDir.dx * GameConfig.tackleForce * 0.3,
-                                          dy: normalizedDir.dy * GameConfig.tackleForce * 0.3)
+                let pushVector = CGVector(dx: normalizedDir.dx * GameConfig.tackleForce * 0.3 * forceMultiplier,
+                                          dy: normalizedDir.dy * GameConfig.tackleForce * 0.3 * forceMultiplier)
                 target.physicsBody?.applyImpulse(pushVector)
 
-                showMessage("铲倒！", color: .orange)
+                if player.hasAmbushBonus {
+                    showMessage("伏击铲倒！", color: .purple)
+                } else {
+                    showMessage("铲倒！", color: .orange)
+                }
+                didHit = true
             }
+        }
+
+        if didHit && player.hasAmbushBonus {
+            player.clearAmbushBonus()
         }
 
         // 启动冷却
@@ -322,11 +336,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let length = hypot(dashDirection.dx, dashDirection.dy)
         let normalizedDir = CGVector(dx: dashDirection.dx / length, dy: dashDirection.dy / length)
 
+        // 伏击加成
+        let forceMultiplier: CGFloat = player.hasAmbushBonus ? GameConfig.ambushBonusMultiplier : 1.0
+
         // 自己冲出去
-        let dashVector = CGVector(dx: normalizedDir.dx * GameConfig.dashForce,
-                                 dy: normalizedDir.dy * GameConfig.dashForce)
+        let dashVector = CGVector(dx: normalizedDir.dx * GameConfig.dashForce * forceMultiplier,
+                                 dy: normalizedDir.dy * GameConfig.dashForce * forceMultiplier)
         player.physicsBody?.applyImpulse(dashVector)
 
+        var didHit = false
         // 冲撞范围内的敌人
         for target in players where target != player {
             let dx = target.position.x - player.position.x
@@ -334,15 +352,26 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let distance = hypot(dx, dy)
 
             if distance < GameConfig.dashKnockbackRange {
-                let knockback = CGVector(dx: normalizedDir.dx * GameConfig.dashKnockbackForce,
-                                         dy: normalizedDir.dy * GameConfig.dashKnockbackForce)
+                let knockback = CGVector(dx: normalizedDir.dx * GameConfig.dashKnockbackForce * forceMultiplier,
+                                         dy: normalizedDir.dy * GameConfig.dashKnockbackForce * forceMultiplier)
                 target.physicsBody?.applyImpulse(knockback)
-                showMessage("撞飞！", color: .red)
+                if player.hasAmbushBonus {
+                    showMessage("伏击撞飞！", color: .purple)
+                } else {
+                    showMessage("撞飞！", color: .red)
+                }
+                didHit = true
             }
         }
 
+        if didHit && player.hasAmbushBonus {
+            player.clearAmbushBonus()
+        }
+
         inputController?.dashButton?.startCooldown(duration: GameConfig.dashCooldown)
-        showMessage("猛冲！", color: .yellow)
+        if !didHit {
+            showMessage("猛冲！", color: .yellow)
+        }
     }
 
     private func performSprint(by player: Player) {
@@ -395,6 +424,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func updateHidingSpots() {
+        // 先更新所有玩家的隐藏状态
         for spot in hidingSpots {
             for player in players {
                 if spot.containsPlayer(player) {
@@ -402,11 +432,31 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                         spot.playerEnter(player)
                         player.enterHiding()
                     }
-                } else if player.isHiding && spot.hiddenPlayers.contains(where: { $0 === player }) {
-                    spot.playerExit(player)
-                    player.exitHiding()
+                } else {
+                    if player.isHiding && spot.hiddenPlayers.contains(where: { $0 === player }) {
+                        spot.playerExit(player)
+                        player.exitHiding()
+                    }
                 }
             }
+        }
+
+        // 更新可见性：隐藏的非主玩家完全不可见
+        guard let mainPlayer = players.first else { return }
+        for player in players.dropFirst() {  // Bot们
+            if player.isHiding {
+                // 隐藏中的Bot对玩家不可见
+                player.alpha = 0.0
+            } else {
+                player.alpha = 1.0
+            }
+        }
+
+        // 主玩家隐藏时自己能看到半透明的自己
+        if mainPlayer.isHiding {
+            mainPlayer.alpha = GameConfig.hidingSpotAlpha
+        } else {
+            mainPlayer.alpha = 1.0
         }
     }
 
@@ -805,25 +855,40 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func useStick(by player: Player) {
-        // 棒子：近战攻击，范围内敌人眩晕3秒
         var direction = inputController?.currentDirection ?? .zero
         if direction.dx == 0 && direction.dy == 0 {
             direction = CGVector(dx: 0, dy: 1)
         }
 
+        // 伏击加成：范围和持续时间增加
+        let rangeMultiplier: CGFloat = player.hasAmbushBonus ? GameConfig.ambushBonusMultiplier : 1.0
+        let effectiveRange: CGFloat = 70 * rangeMultiplier
+        let stunDuration: TimeInterval = player.hasAmbushBonus ? 4.5 : 3.0  // 伏击时眩晕更久
+
+        var didHit = false
         for target in players where target != player {
             let dx = target.position.x - player.position.x
             let dy = target.position.y - player.position.y
             let distance = hypot(dx, dy)
 
-            if distance < 70 {  // 棒子攻击范围
+            if distance < effectiveRange {
                 if target.absorbHit() {
                     showMessage("被格挡！", color: .cyan)
                 } else {
-                    target.setState(.stunned, duration: 3.0)
-                    showMessage("击晕！", color: .yellow)
+                    target.setState(.stunned, duration: stunDuration)
+                    if player.hasAmbushBonus {
+                        showMessage("伏击！", color: .purple)
+                    } else {
+                        showMessage("击晕！", color: .yellow)
+                    }
+                    didHit = true
                 }
             }
+        }
+
+        // 伏击后清除加成
+        if didHit && player.hasAmbushBonus {
+            player.clearAmbushBonus()
         }
     }
 
