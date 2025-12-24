@@ -92,6 +92,12 @@ struct GameConfig {
     static let shieldDuration: TimeInterval = 3.0  // 盾牌持续时间
     static let shieldHits: Int = 3                 // 可抵挡次数
 
+    // MARK: - Hiding Spot
+    static let hidingSpotRadius: CGFloat = 40      // 隐藏点半径
+    static let hidingSpotAlpha: CGFloat = 0.3      // 隐藏时玩家透明度
+    static let ambushBonusDuration: TimeInterval = 1.5  // 出来后攻击加成持续时间
+    static let ambushBonusMultiplier: CGFloat = 1.5     // 伏击伤害/效果倍数
+
     // MARK: - World / Camera
     static let worldScaleFactor: CGFloat = 3.0
     static let cameraLerp: CGFloat = 0.18
